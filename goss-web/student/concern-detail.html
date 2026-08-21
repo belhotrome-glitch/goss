@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concern Detail — GOSS</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const concernId = params.get('id');
+let CURRENT_USER = null;
+let chatChannel = null;
+
+async function loadDetail() {
+  const { concern, messages } = await api('/api/concerns.php?action=detail&id=' + concernId);
+  markMessagesRead(concernId, CURRENT_USER.id);
+  const thread = messages.map(m => `
+    <div class="msg ${m.sender_id == CURRENT_USER.id ? 'mine' : 'theirs'}">
+      <div>${esc(m.message)}</div>
+      <div class="msg-meta">${esc(m.sender_name)} · ${fmtDateTime(m.sent_at)}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('detail-container').innerHTML = `
+    <div class="card">
+      <div class="section-header">
+        <div>
+          <div style="font-size:17px;font-weight:700">${esc(concern.subject)}</div>
+          <div class="list-item-sub">${esc(concern.category)} · Submitted ${fmtDate(concern.created_at)}</div>
+        </div>
+        <span class="badge ${badgeClass(concern.status)}">${concern.status}</span>
+      </div>
+      <div class="list-item-meta" style="margin-bottom:14px">
+        ${concern.is_urgent ? '<span class="badge badge-urgent">Urgent</span>' : ''}
+        <span class="chip">${concern.staff_name ? 'Assigned to ' + esc(concern.staff_name) : 'Unassigned'}</span>
+      </div>
+      <div class="thread">${thread}</div>
+      <form id="reply-form" class="reply-box">
+        <textarea id="reply-text" rows="2" placeholder="Type a reply..." required></textarea>
+        <button type="submit" class="btn" style="width:auto">Send</button>
+      </form>
+    </div>
+  `;
+
+  document.getElementById('reply-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = document.getElementById('reply-text').value.trim();
+    if (!text) return;
+    await api('/api/concerns.php?action=reply', { method: 'POST', body: { concern_id: concernId, message: text } });
+    await loadDetail();
+  });
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  CURRENT_USER = user;
+  const isStaff = user.role === 'staff';
+  renderShell(user, 'concerns', 'Concern Details');
+
+  document.getElementById('page-content').innerHTML = `
+    <a href="${isStaff ? '../staff/concerns.html' : 'concerns.html'}" style="font-size:13px;color:var(--primary-teal);font-weight:600">← Back</a>
+    <div style="margin-top:14px" id="detail-container"></div>
+  `;
+
+  await loadDetail();
+
+  // Real-time: refresh the thread whenever a message is added/updated for
+  // this concern (RLS still governs who actually receives these events).
+  chatChannel = subscribeToConcernMessages(concernId, () => { loadDetail(); });
+  window.addEventListener('beforeunload', () => unsubscribeChannel(chatChannel));
+})();
+</script>
+</body>
+</html>

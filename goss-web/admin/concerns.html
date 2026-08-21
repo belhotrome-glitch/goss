@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concerns — GOSS Admin</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+let statusFilter = '';
+
+async function load() {
+  const { concerns } = await api('/api/admin.php?action=concerns_list&status=' + statusFilter);
+  document.getElementById('list').innerHTML = concerns.map(c => `
+    <div class="list-item">
+      <div class="list-item-main">
+        <div class="list-item-title">${esc(c.subject)}</div>
+        <div class="list-item-sub">${esc(c.student_name)} · ${esc(c.category)} · Submitted ${fmtDate(c.created_at)}</div>
+        <div class="list-item-meta">
+          <span class="badge ${badgeClass(c.status)}">${c.status}</span>
+          ${c.is_urgent ? '<span class="badge badge-urgent">Urgent</span>' : ''}
+          <span class="chip">${c.staff_name ? 'Assigned to ' + esc(c.staff_name) : 'Unassigned'}</span>
+        </div>
+      </div>
+    </div>`).join('') || '<div class="empty-state">No concerns found</div>';
+  // Note: admin view intentionally shows case metadata (status, category,
+  // assignment) only — not the confidential message thread — per least
+  // privilege. Staff read message content only for cases they're assigned to.
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'admin') { location.href = user.role === 'staff' ? '../staff/dashboard.html' : '../student/dashboard.html'; return; }
+  renderShell(user, 'concerns', 'Concerns (Admin View)');
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="card">
+      <div class="section-header">
+        <div class="section-title">All Concerns — metadata only, confidential</div>
+        <select id="status-filter">
+          <option value="">All statuses</option>
+          <option value="Pending">Pending</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Resolved">Resolved</option>
+          <option value="Closed">Closed</option>
+        </select>
+      </div>
+      <div id="list"></div>
+    </div>
+  `;
+  document.getElementById('status-filter').addEventListener('change', (e) => { statusFilter = e.target.value; load(); });
+  await load();
+})();
+</script>
+</body>
+</html>

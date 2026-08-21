@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>All Concerns — GOSS Staff</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+let ALL = [];
+let STATUS_FILTER = 'All';
+
+function draw() {
+  const filtered = STATUS_FILTER === 'All' ? ALL : ALL.filter(c => c.status === STATUS_FILTER);
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.toggle('active', t.dataset.f === STATUS_FILTER));
+
+  document.getElementById('list-container').innerHTML = filtered.length ? filtered.map(c => `
+    <div class="list-item">
+      <div class="list-item-main">
+        <a href="concern-detail.html?id=${c.id}" style="display:block">
+          <div class="list-item-title">${esc(c.subject)}</div>
+          <div class="list-item-sub">${esc(c.student_name)} ${c.student_no ? '(' + esc(c.student_no) + ')' : ''}${c.student_course ? ' · ' + esc(c.student_course) : ''} · ${esc(c.category)}</div>
+        </a>
+        <div class="list-item-meta">
+          <span class="badge ${badgeClass(c.status)}">${c.status}</span>
+          ${c.is_urgent ? '<span class="badge badge-urgent">Urgent</span>' : ''}
+          <span class="chip">${c.staff_name ? 'Assigned: ' + esc(c.staff_name) : 'Unassigned'}</span>
+          <span class="chip">${fmtDate(c.created_at)}</span>
+        </div>
+      </div>
+      ${!c.assigned_to ? `<button class="btn btn-sm btn-outline" onclick="assignToMe('${c.id}')">Assign to me</button>` : ''}
+    </div>
+  `).join('') : '<div class="empty-state"><div class="icon">💬</div>No concerns found</div>';
+}
+
+async function assignToMe(id) {
+  await api('/api/concerns.php?action=update', { method: 'POST', body: { id, assign_to_me: true, status: 'In Progress' } });
+  await load();
+}
+
+async function load() {
+  const status = STATUS_FILTER === 'All' ? '' : '&status=' + encodeURIComponent(STATUS_FILTER);
+  const { concerns } = await api('/api/concerns.php?action=list' + status);
+  ALL = concerns;
+  draw();
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'staff') { location.href = '../student/dashboard.html'; return; }
+  renderShell(user, 'concerns', 'All Concerns');
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="filter-tabs" id="filter-tabs">
+      ${['All', 'Pending', 'In Progress', 'Resolved', 'Closed'].map(f => `<button class="filter-tab" data-f="${f}">${f}</button>`).join('')}
+    </div>
+    <div class="card" id="list-container"></div>
+  `;
+
+  document.getElementById('filter-tabs').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.filter-tab');
+    if (!btn) return;
+    STATUS_FILTER = btn.dataset.f;
+    await load();
+  });
+
+  await load();
+})();
+</script>
+</body>
+</html>

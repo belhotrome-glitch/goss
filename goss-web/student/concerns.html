@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Concerns — GOSS</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+let ALL_CONCERNS = [];
+let FILTER = 'All';
+
+function draw() {
+  const content = document.getElementById('list-container');
+  const filtered = FILTER === 'All' ? ALL_CONCERNS : ALL_CONCERNS.filter(c => c.status === FILTER);
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.toggle('active', t.dataset.f === FILTER));
+
+  content.innerHTML = filtered.length ? filtered.map(c => `
+    <a href="concern-detail.html?id=${c.id}" class="list-item" style="display:flex">
+      <div class="list-item-main">
+        <div class="list-item-title">${esc(c.subject)}</div>
+        <div class="list-item-sub">${esc(c.category)} ${c.staff_name ? '· Assigned to ' + esc(c.staff_name) : '· Unassigned'}</div>
+        <div class="list-item-meta">
+          <span class="badge ${badgeClass(c.status)}">${c.status}</span>
+          ${c.is_urgent ? '<span class="badge badge-urgent">Urgent</span>' : ''}
+          <span class="chip">${fmtDate(c.created_at)}</span>
+        </div>
+      </div>
+      <div style="color:var(--text-secondary)">›</div>
+    </a>
+  `).join('') : '<div class="empty-state"><div class="icon">💬</div>No concerns in this category</div>';
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'student') { location.href = '../staff/dashboard.html'; return; }
+  renderShell(user, 'concerns', 'My Concerns');
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="section-header">
+      <div class="filter-tabs" id="filter-tabs">
+        ${['All', 'Pending', 'In Progress', 'Resolved', 'Closed'].map(f => `<button class="filter-tab" data-f="${f}">${f}</button>`).join('')}
+      </div>
+      <a href="submit.html" class="btn btn-sm" style="text-decoration:none">+ New Concern</a>
+    </div>
+    <div class="card" id="list-container"></div>
+  `;
+
+  document.getElementById('filter-tabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.filter-tab');
+    if (!btn) return;
+    FILTER = btn.dataset.f;
+    draw();
+  });
+
+  const { concerns } = await api('/api/concerns.php?action=list');
+  ALL_CONCERNS = concerns;
+  draw();
+})();
+</script>
+</body>
+</html>

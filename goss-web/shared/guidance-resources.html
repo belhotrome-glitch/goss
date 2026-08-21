@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guidance Resources — GOSS</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  renderShell(user, 'resources', 'Guidance Resources');
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="section-title" style="margin-bottom:10px">🎓 Academic Guidance</div>
+        <p class="list-item-sub">Study planning, course load advice, and academic probation support. Book an appointment with a counselor for personalized help.</p>
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-bottom:10px">💼 Career Guidance</div>
+        <p class="list-item-sub">Resume reviews, internship guidance, and career-path exploration sessions with the guidance office.</p>
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-bottom:10px">🌱 Wellbeing & Wellness</div>
+        <p class="list-item-sub">General wellbeing resources such as stress-management tips and healthy study-life balance habits. This is not a substitute for medical or mental-health diagnosis — for urgent concerns, please contact a professional directly.</p>
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-bottom:10px">📖 Study Resources</div>
+        <p class="list-item-sub">Time-management and study-skill techniques available for pickup at the guidance office, or ask a counselor via chat.</p>
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-bottom:10px">📋 School Policies</div>
+        <p class="list-item-sub">See the student handbook for attendance, conduct, and academic policies. Ask your counselor if you need help interpreting a policy.</p>
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-bottom:10px">🚨 Emergency Contacts</div>
+        <p class="list-item-sub">For a life-threatening emergency, contact local emergency services immediately. For urgent but non-emergency concerns, submit a concern marked "Urgent" or contact the guidance office directly during office hours.</p>
+      </div>
+    </div>
+  `;
+})();
+</script>
+</body>
+</html>

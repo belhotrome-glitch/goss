@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Overview — GOSS</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'admin') { location.href = user.role === 'staff' ? '../staff/dashboard.html' : '../student/dashboard.html'; return; }
+  renderShell(user, 'dashboard', 'Admin Overview');
+
+  const content = document.getElementById('page-content');
+  content.innerHTML = `<div class="empty-state">Loading...</div>`;
+
+  let stats;
+  try {
+    stats = await api('/api/admin.php?action=overview');
+  } catch (e) {
+    content.innerHTML = `<div class="error-box">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const statCards = [
+    { label: 'Total Students', value: stats.total_students, color: 'var(--primary-teal)', icon: '🎓' },
+    { label: 'Total Staff/Counselors', value: stats.total_staff, color: 'var(--in-progress)', icon: '🧑‍💼' },
+    { label: 'Active Users', value: stats.active_users, color: 'var(--resolved)', icon: '✅' },
+    { label: 'Pending Concerns', value: stats.pending_concerns, color: 'var(--pending)', icon: '⏳' },
+    { label: 'Total Concerns', value: stats.total_concerns, color: 'var(--primary-teal)', icon: '💬' },
+    { label: 'Pending Appointments', value: stats.pending_appointments, color: 'var(--in-progress)', icon: '📅' },
+  ].map(s => `
+    <div class="card stat-card">
+      <div class="icon" style="background:${s.color}1A;color:${s.color}">${s.icon}</div>
+      <div class="value">${s.value ?? 0}</div>
+      <div class="label">${s.label}</div>
+    </div>`).join('');
+
+  const activity = (stats.recent_activity || []).map(n => `
+    <div class="list-item">
+      <div class="list-item-main">
+        <div class="list-item-title">${esc(n.title)}</div>
+        <div class="list-item-sub">${esc(n.body)}</div>
+      </div>
+      <div class="list-item-meta">${fmtDateTime(n.created_at)}</div>
+    </div>`).join('') || '<div class="empty-state">No recent activity</div>';
+
+  content.innerHTML = `
+    <div class="grid grid-3" style="margin-bottom:24px">${statCards}</div>
+    <div class="card">
+      <div class="section-header">
+        <div class="section-title">Recent System Activity</div>
+        <a href="audit-logs.html" style="font-size:13px;color:var(--primary-teal);font-weight:600">View audit logs</a>
+      </div>
+      ${activity}
+    </div>
+  `;
+})();
+</script>
+</body>
+</html>

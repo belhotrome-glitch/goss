@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Appointments — GOSS Staff</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+let STUDENT_OPTS = [];
+
+async function updateStatus(id, status) {
+  if (status === 'Cancelled' && !confirm('Decline / cancel this appointment?')) return;
+  await api('/api/appointments.php?action=update_status', { method: 'POST', body: { id, status } });
+  await load();
+}
+
+async function acceptAppt(a) {
+  // Accept as-is: keep the student's requested date/time, just confirm it.
+  try {
+    await api('/api/appointments.php?action=reschedule', {
+      method: 'POST',
+      body: { id: a.id, appt_date: a.appt_date, appt_time: a.appt_time }
+    });
+    toast('Appointment accepted');
+    await load();
+  } catch (err) { toast(err.message); }
+}
+
+function openRescheduleModal(a) {
+  document.getElementById('resched-appt-id').value = a.id;
+  document.getElementById('resched-who').textContent = `${a.student_name || 'Student'} — currently ${fmtDate(a.appt_date)} at ${a.appt_time}`;
+  document.getElementById('resched_date').value = a.appt_date;
+  document.getElementById('resched_time').value = a.appt_time;
+  document.getElementById('resched-error').classList.add('hidden');
+  document.getElementById('resched-overlay').classList.remove('hidden');
+}
+function closeRescheduleModal() {
+  document.getElementById('resched-overlay').classList.add('hidden');
+}
+
+function apptRow(a) {
+  let actions = '';
+  if (a.status === 'Pending') {
+    actions = `
+      <button class="btn btn-sm" onclick='acceptAppt(${JSON.stringify(a)})'>Accept</button>
+      <button class="btn btn-sm btn-outline" onclick='openRescheduleModal(${JSON.stringify(a)})'>Change date/time</button>
+      <button class="btn btn-sm btn-outline" onclick="updateStatus('${a.id}', 'Cancelled')">Decline</button>
+    `;
+  } else if (a.status === 'Scheduled') {
+    actions = `
+      <button class="btn btn-sm" onclick="updateStatus('${a.id}', 'Completed')">Complete</button>
+      <button class="btn btn-sm btn-outline" onclick='openRescheduleModal(${JSON.stringify(a)})'>Reschedule</button>
+      <button class="btn btn-sm btn-outline" onclick="updateStatus('${a.id}', 'Cancelled')">Cancel</button>
+    `;
+  }
+  return `
+    <tr>
+      <td>${esc(a.student_name)}${a.student_no ? ' (' + esc(a.student_no) + ')' : ''}${a.student_course ? ' · ' + esc(a.student_course) : ''}</td>
+      <td>${fmtDate(a.appt_date)}</td>
+      <td>${esc(a.appt_time)}</td>
+      <td>${esc(a.type)}</td>
+      <td><span class="badge ${badgeClass(a.status)}">${a.status === 'Pending' ? 'Pending approval' : a.status}</span></td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">${actions}</td>
+    </tr>`;
+}
+
+async function load() {
+  const { appointments } = await api('/api/appointments.php?action=list');
+  document.getElementById('appt-table-body').innerHTML = appointments.length
+    ? appointments.map(apptRow).join('')
+    : '<tr><td colspan="6"><div class="empty-state">No appointments yet</div></td></tr>';
+}
+
+function openBookModal() {
+  document.getElementById('book-error').classList.add('hidden');
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+function closeBookModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'staff') { location.href = '../student/dashboard.html'; return; }
+  renderShell(user, 'appointments', 'Appointments');
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Appointments</div>
+      <button class="btn btn-sm" onclick="openBookModal()">+ New Appointment</button>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Student</th><th>Date</th><th>Time</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="appt-table-body"></tbody>
+      </table>
+    </div>
+
+    <div class="modal-overlay hidden" id="modal-overlay">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>New Appointment</h3>
+          <button class="close-btn" onclick="closeBookModal()">✕</button>
+        </div>
+        <div id="book-error" class="error-box hidden"></div>
+        <form id="book-form">
+          <div class="field">
+            <label for="student_id">Student</label>
+            <select id="student_id" required></select>
+          </div>
+          <div class="field">
+            <label for="appt_date">Date</label>
+            <input type="date" id="appt_date" required>
+          </div>
+          <div class="field">
+            <label for="appt_time">Time</label>
+            <input type="text" id="appt_time" required placeholder="e.g. 10:00 AM">
+          </div>
+          <div class="field">
+            <label for="type">Type</label>
+            <select id="type">
+              <option value="In-Person">In-Person</option>
+              <option value="Virtual">Virtual</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="notes">Notes (optional)</label>
+            <textarea id="notes" rows="3" placeholder="Reason for the appointment"></textarea>
+          </div>
+          <button type="submit" class="btn" id="book-submit-btn">Schedule Appointment</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal-overlay hidden" id="resched-overlay">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Accept / Change Date &amp; Time</h3>
+          <button class="close-btn" onclick="closeRescheduleModal()">✕</button>
+        </div>
+        <div id="resched-error" class="error-box hidden"></div>
+        <p class="list-item-sub" id="resched-who" style="margin-bottom:12px"></p>
+        <form id="resched-form">
+          <input type="hidden" id="resched-appt-id">
+          <div class="field">
+            <label for="resched_date">Date</label>
+            <input type="date" id="resched_date" required>
+          </div>
+          <div class="field">
+            <label for="resched_time">Time</label>
+            <input type="text" id="resched_time" required placeholder="e.g. 10:00 AM">
+          </div>
+          <button type="submit" class="btn" id="resched-submit-btn">Confirm Appointment</button>
+        </form>
+      </div>
+    </div>
+  `;
+
+  const { students } = await api('/api/appointments.php?action=student_list');
+  STUDENT_OPTS = students;
+  document.getElementById('student_id').innerHTML = students.map(s =>
+    `<option value="${s.id}">${esc(s.full_name)}${s.user_id_no ? ' — ' + esc(s.user_id_no) : ''}${s.course ? ' · ' + esc(s.course) : ''}</option>`
+  ).join('');
+
+  document.getElementById('book-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = document.getElementById('book-error');
+    const btn = document.getElementById('book-submit-btn');
+    errBox.classList.add('hidden');
+    btn.disabled = true; btn.textContent = 'Scheduling...';
+    try {
+      await api('/api/appointments.php?action=create', {
+        method: 'POST',
+        body: {
+          student_id: document.getElementById('student_id').value,
+          appt_date: document.getElementById('appt_date').value,
+          appt_time: document.getElementById('appt_time').value.trim(),
+          type: document.getElementById('type').value,
+          notes: document.getElementById('notes').value.trim(),
+        }
+      });
+      closeBookModal();
+      toast('Appointment scheduled');
+      await load();
+      e.target.reset();
+    } catch (err) {
+      errBox.textContent = err.message;
+      errBox.classList.remove('hidden');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Schedule Appointment';
+    }
+  });
+
+  document.getElementById('resched-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = document.getElementById('resched-error');
+    const btn = document.getElementById('resched-submit-btn');
+    errBox.classList.add('hidden');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+      await api('/api/appointments.php?action=reschedule', {
+        method: 'POST',
+        body: {
+          id: document.getElementById('resched-appt-id').value,
+          appt_date: document.getElementById('resched_date').value,
+          appt_time: document.getElementById('resched_time').value.trim(),
+        }
+      });
+      closeRescheduleModal();
+      toast('Appointment confirmed');
+      await load();
+    } catch (err) {
+      errBox.textContent = err.message;
+      errBox.classList.remove('hidden');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Confirm Appointment';
+    }
+  });
+
+  await load();
+})();
+</script>
+</body>
+</html>

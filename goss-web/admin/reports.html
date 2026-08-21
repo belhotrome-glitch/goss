@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reports — GOSS Admin</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'admin') { location.href = user.role === 'staff' ? '../staff/dashboard.html' : '../student/dashboard.html'; return; }
+  renderShell(user, 'reports', 'Reports & Analytics');
+
+  const content = document.getElementById('page-content');
+  content.innerHTML = `<div class="empty-state">Loading...</div>`;
+
+  const r = await api('/api/admin.php?action=reports');
+
+  const byCategory = r.by_category.map(x => `
+    <div class="list-item"><div class="list-item-main">${esc(x.category)}</div><div class="list-item-meta">${x.c}</div></div>
+  `).join('') || '<div class="empty-state">No data</div>';
+
+  const workload = r.counselor_workload.map(x => `
+    <div class="list-item"><div class="list-item-main">${esc(x.name)}</div><div class="list-item-meta">${x.count} appointments</div></div>
+  `).join('') || '<div class="empty-state">No data</div>';
+
+  const statCards = [
+    { label: 'Urgent Concerns', value: r.by_urgency.urgent, icon: '🚨', color: 'var(--urgent)' },
+    { label: 'Completed Appointments', value: r.appointments_completed, icon: '✅', color: 'var(--resolved)' },
+    { label: 'Cancelled Appointments', value: r.appointments_cancelled, icon: '🚫', color: 'var(--closed)' },
+    { label: 'No-Show Rate', value: r.no_show_rate + '%', icon: '📉', color: 'var(--pending)' },
+    { label: 'Avg. Resolution Time', value: r.avg_resolution_hours !== null ? r.avg_resolution_hours + 'h' : '—', icon: '⏱️', color: 'var(--in-progress)' },
+  ].map(s => `
+    <div class="card stat-card">
+      <div class="icon" style="background:${s.color}1A;color:${s.color}">${s.icon}</div>
+      <div class="value">${s.value}</div>
+      <div class="label">${s.label}</div>
+    </div>`).join('');
+
+  content.innerHTML = `
+    <div class="grid grid-3" style="margin-bottom:24px">${statCards}</div>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="section-header"><div class="section-title">Concerns by Category</div></div>
+        ${byCategory}
+      </div>
+      <div class="card">
+        <div class="section-header"><div class="section-title">Counselor Workload</div></div>
+        ${workload}
+      </div>
+    </div>
+    <p class="list-item-sub" style="margin-top:16px">Reports show aggregate counts only — no individual concern content or messages are surfaced here, in line with confidentiality-by-design.</p>
+  `;
+})();
+</script>
+</body>
+</html>

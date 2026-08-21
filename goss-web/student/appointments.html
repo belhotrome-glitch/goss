@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Appointments — GOSS</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+let STAFF_OPTS = [];
+
+function apptRow(a) {
+  return `
+    <div class="list-item">
+      <div class="list-item-main">
+        <div class="list-item-title">${esc(a.staff_name)} ${a.staff_position ? '· ' + esc(a.staff_position) : ''}</div>
+        <div class="list-item-sub">${fmtDate(a.appt_date)} at ${esc(a.appt_time)} · ${esc(a.type)} ${a.location ? '· ' + esc(a.location) : ''}</div>
+        ${a.status === 'Pending' ? `<div class="list-item-sub">⏳ Waiting for ${esc(a.staff_name || 'the counselor')} to accept or change the date/time</div>` : ''}
+        ${a.notes ? `<div class="list-item-sub">📝 ${esc(a.notes)}</div>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        <span class="badge ${badgeClass(a.status)}">${a.status === 'Pending' ? 'Pending approval' : a.status}</span>
+        ${(a.status === 'Scheduled' || a.status === 'Pending') ? `<button class="btn btn-sm btn-outline" onclick="cancelAppt('${a.id}')">Cancel</button>` : ''}
+        ${a.status === 'Completed' ? `<button class="btn btn-sm btn-outline" onclick="openFeedback('${a.id}')">Rate this session</button>` : ''}
+      </div>
+    </div>`;
+}
+
+async function openFeedback(appointmentId) {
+  const { feedback } = await api('/api/feedback.php?action=for_appointment&appointment_id=' + appointmentId);
+  if (feedback) { toast('You already submitted feedback for this appointment'); return; }
+  const rating = prompt('Rate this session from 1 (poor) to 5 (excellent):', '5');
+  const ratingNum = parseInt(rating, 10);
+  if (!ratingNum || ratingNum < 1 || ratingNum > 5) { toast('Please enter a rating from 1 to 5'); return; }
+  const comments = prompt('Any comments? (optional)') || '';
+  try {
+    await api('/api/feedback.php?action=submit', { method: 'POST', body: { appointment_id: appointmentId, rating: ratingNum, feedback: comments } });
+    toast('Thanks for your feedback!');
+  } catch (err) { toast(err.message); }
+}
+
+async function cancelAppt(id) {
+  if (!confirm('Cancel this appointment?')) return;
+  await api('/api/appointments.php?action=update_status', { method: 'POST', body: { id, status: 'Cancelled' } });
+  await loadList();
+}
+
+async function loadList() {
+  const { appointments } = await api('/api/appointments.php?action=list');
+  document.getElementById('appt-list').innerHTML = appointments.length
+    ? appointments.map(apptRow).join('')
+    : '<div class="empty-state"><div class="icon">📅</div>No appointments yet</div>';
+}
+
+function openBookModal() {
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+function closeBookModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'student') { location.href = '../staff/dashboard.html'; return; }
+  renderShell(user, 'appointments', 'Appointments');
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="section-header">
+      <div class="section-title">Your Appointments</div>
+      <button class="btn btn-sm" onclick="openBookModal()">+ Book Appointment</button>
+    </div>
+    <div class="card" id="appt-list"></div>
+
+    <div class="modal-overlay hidden" id="modal-overlay">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Book an Appointment</h3>
+          <button class="close-btn" onclick="closeBookModal()">✕</button>
+        </div>
+        <div id="book-error" class="error-box hidden"></div>
+        <form id="book-form">
+          <div class="field">
+            <label for="staff_id">Guidance Staff</label>
+            <select id="staff_id" required></select>
+          </div>
+          <div class="field">
+            <label for="appt_date">Date</label>
+            <input type="date" id="appt_date" required>
+          </div>
+          <div class="field">
+            <label for="appt_time">Time</label>
+            <input type="text" id="appt_time" required placeholder="e.g. 10:00 AM">
+          </div>
+          <div class="field">
+            <label for="type">Type</label>
+            <select id="type">
+              <option value="In-Person">In-Person</option>
+              <option value="Virtual">Virtual</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="notes">Notes (optional)</label>
+            <textarea id="notes" rows="3" placeholder="What would you like to discuss?"></textarea>
+          </div>
+          <p class="list-item-sub" style="margin:-8px 0 4px">The staff member will need to accept your request, or may propose a different date/time.</p>
+          <button type="submit" class="btn" id="book-submit-btn">Request Appointment</button>
+        </form>
+      </div>
+    </div>
+  `;
+
+  const { staff } = await api('/api/appointments.php?action=staff_list');
+  STAFF_OPTS = staff;
+  document.getElementById('staff_id').innerHTML = staff.map(s => `<option value="${s.id}">${esc(s.full_name)}${s.position ? ' — ' + esc(s.position) : ''}</option>`).join('');
+
+  document.getElementById('book-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = document.getElementById('book-error');
+    const btn = document.getElementById('book-submit-btn');
+    errBox.classList.add('hidden');
+    btn.disabled = true; btn.textContent = 'Requesting...';
+    try {
+      await api('/api/appointments.php?action=create', {
+        method: 'POST',
+        body: {
+          staff_id: document.getElementById('staff_id').value,
+          appt_date: document.getElementById('appt_date').value,
+          appt_time: document.getElementById('appt_time').value.trim(),
+          type: document.getElementById('type').value,
+          notes: document.getElementById('notes').value.trim(),
+        }
+      });
+      closeBookModal();
+      toast('Appointment requested — waiting for staff to accept');
+      await loadList();
+      e.target.reset();
+    } catch (err) {
+      errBox.textContent = err.message;
+      errBox.classList.remove('hidden');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Request Appointment';
+    }
+  });
+
+  await loadList();
+})();
+</script>
+</body>
+</html>

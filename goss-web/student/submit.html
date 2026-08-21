@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Submit Concern — GOSS</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'student') { location.href = '../staff/dashboard.html'; return; }
+  renderShell(user, 'submit', 'Submit a Concern');
+
+  const categories = ['Academic Issues', 'Mental Health', 'Career Guidance', 'Personal Issues', 'Financial Concerns', 'Bullying / Harassment', 'Other'];
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="card" style="max-width:600px">
+      <div id="error" class="error-box hidden"></div>
+      <form id="concern-form">
+        <div class="field">
+          <label for="category">Category</label>
+          <select id="category" required>
+            <option value="">Select a category</option>
+            ${categories.map(c => `<option value="${c}">${c}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label for="subject">Subject</label>
+          <input type="text" id="subject" required placeholder="Brief summary of your concern">
+        </div>
+        <div class="field">
+          <label for="description">Description</label>
+          <textarea id="description" rows="6" required placeholder="Describe your concern in detail..."></textarea>
+        </div>
+        <div class="field field-check">
+          <input type="checkbox" id="is_urgent"> <label for="is_urgent" style="margin:0">Mark as urgent</label>
+        </div>
+        <button type="submit" class="btn" id="submit-btn">Submit Concern</button>
+      </form>
+    </div>
+  `;
+
+  document.getElementById('concern-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = document.getElementById('error');
+    const btn = document.getElementById('submit-btn');
+    errBox.classList.add('hidden');
+    btn.disabled = true; btn.textContent = 'Submitting...';
+    try {
+      await api('/api/concerns.php?action=create', {
+        method: 'POST',
+        body: {
+          category: document.getElementById('category').value,
+          subject: document.getElementById('subject').value.trim(),
+          description: document.getElementById('description').value.trim(),
+          is_urgent: document.getElementById('is_urgent').checked,
+        }
+      });
+      toast('Concern submitted');
+      location.href = 'concerns.html';
+    } catch (err) {
+      errBox.textContent = err.message;
+      errBox.classList.remove('hidden');
+      btn.disabled = false; btn.textContent = 'Submit Concern';
+    }
+  });
+})();
+</script>
+</body>
+</html>

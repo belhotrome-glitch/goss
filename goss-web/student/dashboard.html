@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — GOSS</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'student') { location.href = '../staff/dashboard.html'; return; }
+  renderShell(user, 'dashboard', 'Dashboard');
+
+  const content = document.getElementById('page-content');
+  content.innerHTML = `<div class="empty-state">Loading...</div>`;
+
+  const stats = await api('/api/dashboard.php?action=stats');
+  const byStatus = stats.concerns_by_status || {};
+
+  const statCards = [
+    { label: 'Pending', value: byStatus['Pending'] || 0, color: 'var(--pending)', icon: '⏳' },
+    { label: 'In Progress', value: byStatus['In Progress'] || 0, color: 'var(--in-progress)', icon: '🔄' },
+    { label: 'Resolved', value: byStatus['Resolved'] || 0, color: 'var(--resolved)', icon: '✅' },
+    { label: 'Upcoming Appointments', value: stats.upcoming_appointments, color: 'var(--primary-teal)', icon: '📅' },
+  ].map(s => `
+    <div class="card stat-card">
+      <div class="icon" style="background:${s.color}1A;color:${s.color}">${s.icon}</div>
+      <div class="value">${s.value}</div>
+      <div class="label">${s.label}</div>
+    </div>`).join('');
+
+  const recentConcerns = (stats.recent_concerns || []).map(c => `
+    <div class="list-item">
+      <div class="list-item-main">
+        <div class="list-item-title">${esc(c.subject)}</div>
+        <div class="list-item-sub">${esc(c.category)} ${c.staff_name ? '· ' + esc(c.staff_name) : ''}</div>
+        <div class="list-item-meta">
+          <span class="badge ${badgeClass(c.status)}">${c.status}</span>
+          ${c.is_urgent ? '<span class="badge badge-urgent">Urgent</span>' : ''}
+          <span class="chip">${fmtDate(c.updated_at)}</span>
+        </div>
+      </div>
+    </div>`).join('') || '<div class="empty-state">No concerns yet. <a href="submit.html" style="color:var(--primary-teal)">Submit one</a></div>';
+
+  const nextAppts = (stats.next_appointments || []).map(a => `
+    <div class="list-item">
+      <div class="list-item-main">
+        <div class="list-item-title">${esc(a.staff_name)}</div>
+        <div class="list-item-sub">${fmtDate(a.appt_date)} at ${esc(a.appt_time)} · ${esc(a.type)}</div>
+      </div>
+      <span class="badge ${badgeClass(a.status)}">${a.status}</span>
+    </div>`).join('') || '<div class="empty-state">No upcoming appointments</div>';
+
+  let announcementsHtml = '';
+  try {
+    const { announcements } = await api('/api/announcements.php?action=list');
+    if (announcements.length) {
+      announcementsHtml = `
+        <div class="card" style="margin-top:24px">
+          <div class="section-header"><div class="section-title">📣 Announcements</div></div>
+          ${announcements.slice(0, 3).map(a => `
+            <div class="list-item">
+              <div class="list-item-main">
+                <div class="list-item-title">${esc(a.title)}</div>
+                <div class="list-item-sub">${esc(a.body)}</div>
+                <div class="list-item-meta">${fmtDate(a.created_at)}</div>
+              </div>
+            </div>`).join('')}
+        </div>`;
+    }
+  } catch { /* announcements are optional */ }
+
+  content.innerHTML = `
+    <div class="grid grid-4" style="margin-bottom:24px">${statCards}</div>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="section-header">
+          <div class="section-title">Recent Concerns</div>
+          <a href="concerns.html" style="font-size:13px;color:var(--primary-teal);font-weight:600">View all</a>
+        </div>
+        ${recentConcerns}
+      </div>
+      <div class="card">
+        <div class="section-header">
+          <div class="section-title">Upcoming Appointments</div>
+          <a href="appointments.html" style="font-size:13px;color:var(--primary-teal);font-weight:600">View all</a>
+        </div>
+        ${nextAppts}
+      </div>
+    </div>
+    <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
+      <a href="submit.html" class="btn" style="width:auto;padding:12px 20px">📝 Submit a Concern</a>
+      <a href="appointments.html" class="btn btn-outline" style="width:auto;padding:12px 20px">📅 Book an Appointment</a>
+      <a href="../shared/guidance-resources.html" class="btn btn-outline" style="width:auto;padding:12px 20px">📚 Guidance Resources</a>
+    </div>
+    ${announcementsHtml}
+  `;
+})();
+</script>
+</body>
+</html>

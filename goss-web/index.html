@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GOSS — Sign In</title>
+<link rel="icon" type="image/png" href="assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="brand">
+      <div class="brand-logo"><img src="assets/img/logo.png" alt="Tangub City Global College logo"></div>
+      <h1>GOSS</h1>
+      <p>Guidance Office Support System</p>
+    </div>
+
+    <div id="error" class="error-box hidden"></div>
+
+    <div class="role-toggle">
+      <button type="button" id="tab-student" class="active">Student</button>
+      <button type="button" id="tab-staff">Staff</button>
+      <button type="button" id="tab-admin">Admin</button>
+    </div>
+
+    <form id="login-form">
+      <div class="field">
+        <label for="id_no" id="id-label">Student ID Number</label>
+        <input type="text" id="id_no" required placeholder="STUID#" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="password-wrap">
+          <input type="password" id="password" required placeholder="Enter your password" autocomplete="current-password">
+          <button type="button" id="toggle-password" class="toggle-password" aria-label="Show password">Show</button>
+        </div>
+      </div>
+      <button type="submit" class="btn" id="submit-btn">Sign In</button>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "";</script>
+<script src="assets/js/supabase-config.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+let role = 'student';
+const tabStudent = document.getElementById('tab-student');
+const tabStaff = document.getElementById('tab-staff');
+const tabAdmin = document.getElementById('tab-admin');
+const idLabel = document.getElementById('id-label');
+const idInput = document.getElementById('id_no');
+function setActiveTab(btn) {
+  [tabStudent, tabStaff, tabAdmin].forEach((b) => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+tabStudent.onclick = () => {
+  role = 'student'; setActiveTab(tabStudent);
+  idLabel.textContent = 'Student ID Number'; idInput.placeholder = 'STUID#';
+};
+tabStaff.onclick = () => {
+  role = 'staff'; setActiveTab(tabStaff);
+  idLabel.textContent = 'Staff ID'; idInput.placeholder = 'STFID#';
+};
+tabAdmin.onclick = () => {
+  role = 'admin'; setActiveTab(tabAdmin);
+  idLabel.textContent = 'Admin ID'; idInput.placeholder = 'ADMID#';
+};
+
+const passwordInput = document.getElementById('password');
+const togglePasswordBtn = document.getElementById('toggle-password');
+togglePasswordBtn.onclick = () => {
+  const isHidden = passwordInput.type === 'password';
+  passwordInput.type = isHidden ? 'text' : 'password';
+  togglePasswordBtn.textContent = isHidden ? 'Hide' : 'Show';
+  togglePasswordBtn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+};
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errBox = document.getElementById('error');
+  const btn = document.getElementById('submit-btn');
+  errBox.classList.add('hidden');
+  btn.disabled = true; btn.textContent = 'Signing in...';
+  try {
+    const idNo = document.getElementById('id_no').value.trim();
+    const password = document.getElementById('password').value;
+    if (!idNo) throw new Error(role === 'staff' ? 'Staff ID is required' : 'Student ID Number is required');
+    // Login is keyed off the ID number rather than an email — each account's
+    // ID number maps to a unique internal Supabase Auth login identifier.
+    const email = `${idNo.toLowerCase()}@goss.local`;
+    const { user } = await api('/api/auth.php?action=login', { method: 'POST', body: { email, password, role } });
+    location.href = user.role === 'admin' ? 'admin/dashboard.html' : user.role === 'staff' ? 'staff/dashboard.html' : 'student/dashboard.html';
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.classList.remove('hidden');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Sign In';
+  }
+});
+</script>
+</body>
+</html>

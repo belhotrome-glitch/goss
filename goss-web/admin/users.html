@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>User Management — GOSS Admin</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+let CURRENT_USER = null;
+let roleFilter = '';
+let query = '';
+
+async function load() {
+  const { users } = await api('/api/admin.php?action=users_list&role=' + roleFilter + '&q=' + encodeURIComponent(query));
+  const rows = users.map(u => `
+    <tr>
+      <td>${esc(u.full_name)}</td>
+      <td>${esc(u.email)}</td>
+      <td>${esc(u.user_id_no || '—')}</td>
+      <td><span class="chip">${esc(u.role)}</span></td>
+      <td>${u.is_active === false ? '<span class="badge badge-cancelled">Inactive</span>' : '<span class="badge badge-resolved">Active</span>'}</td>
+      <td style="white-space:nowrap">
+        ${u.id === CURRENT_USER.id ? '<span class="list-item-sub">You</span>' : `
+          <button class="btn btn-sm btn-outline" onclick="toggleActive('${u.id}', ${u.is_active === false})">${u.is_active === false ? 'Activate' : 'Deactivate'}</button>
+          <select onchange="setRole('${u.id}', this.value)" style="margin-left:6px">
+            <option value="">Change role…</option>
+            <option value="student" ${u.role === 'student' ? 'selected' : ''}>student</option>
+            <option value="staff" ${u.role === 'staff' ? 'selected' : ''}>staff</option>
+            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>admin</option>
+          </select>
+        `}
+      </td>
+    </tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">No users found</div></td></tr>';
+
+  document.getElementById('users-table-body').innerHTML = rows;
+}
+
+async function toggleActive(id, makeActive) {
+  await api('/api/admin.php?action=set_active', { method: 'POST', body: { id, is_active: makeActive } });
+  toast(makeActive ? 'Account activated' : 'Account deactivated');
+  await load();
+}
+
+async function setRole(id, role) {
+  if (!role) return;
+  if (!confirm(`Change this user's role to "${role}"?`)) { await load(); return; }
+  await api('/api/admin.php?action=set_role', { method: 'POST', body: { id, role } });
+  toast('Role updated');
+  await load();
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'admin') { location.href = user.role === 'staff' ? '../staff/dashboard.html' : '../student/dashboard.html'; return; }
+  CURRENT_USER = user;
+  renderShell(user, 'users', 'User Management');
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="card">
+      <div class="section-header" style="gap:10px;flex-wrap:wrap">
+        <div class="section-title">All Users</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <select id="role-filter">
+            <option value="">All roles</option>
+            <option value="student">Students</option>
+            <option value="staff">Staff</option>
+            <option value="admin">Admins</option>
+          </select>
+          <input id="search" type="text" placeholder="Search name, email, ID…" style="padding:8px;border:1px solid var(--border);border-radius:8px">
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Name</th><th>Email</th><th>ID No.</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="users-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('role-filter').addEventListener('change', (e) => { roleFilter = e.target.value; load(); });
+  let t;
+  document.getElementById('search').addEventListener('input', (e) => {
+    clearTimeout(t);
+    t = setTimeout(() => { query = e.target.value; load(); }, 250);
+  });
+
+  await load();
+})();
+</script>
+</body>
+</html>

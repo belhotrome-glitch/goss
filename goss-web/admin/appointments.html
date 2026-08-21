@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Appointments — GOSS Admin</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'admin') { location.href = user.role === 'staff' ? '../staff/dashboard.html' : '../student/dashboard.html'; return; }
+  renderShell(user, 'appointments', 'Appointments (Admin View)');
+
+  const content = document.getElementById('page-content');
+  content.innerHTML = `<div class="empty-state">Loading...</div>`;
+
+  const { appointments } = await api('/api/admin.php?action=appointments_list');
+  const rows = appointments.map(a => `
+    <tr>
+      <td>${fmtDate(a.appt_date)}</td>
+      <td>${esc(a.appt_time)}</td>
+      <td>${esc(a.student_name)}</td>
+      <td>${esc(a.staff_name)}</td>
+      <td>${esc(a.type)}</td>
+      <td><span class="badge ${badgeClass(a.status)}">${a.status}</span></td>
+    </tr>`).join('') || '<tr><td colspan="6"><div class="empty-state">No appointments found</div></td></tr>';
+
+  content.innerHTML = `
+    <div class="card">
+      <div class="section-header"><div class="section-title">All Appointments</div></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Date</th><th>Time</th><th>Student</th><th>Counselor</th><th>Type</th><th>Status</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+})();
+</script>
+</body>
+</html>

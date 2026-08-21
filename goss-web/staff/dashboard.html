@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — GOSS Staff</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'staff') { location.href = '../student/dashboard.html'; return; }
+  renderShell(user, 'dashboard', 'Staff Dashboard');
+
+  const content = document.getElementById('page-content');
+  content.innerHTML = `<div class="empty-state">Loading...</div>`;
+
+  const stats = await api('/api/dashboard.php?action=stats');
+  const byStatus = stats.concerns_by_status || {};
+
+  const statCards = [
+    { label: 'Pending', value: byStatus['Pending'] || 0, color: 'var(--pending)', icon: '⏳' },
+    { label: 'In Progress', value: byStatus['In Progress'] || 0, color: 'var(--in-progress)', icon: '🔄' },
+    { label: 'Urgent', value: stats.urgent_count || 0, color: 'var(--urgent)', icon: '🚨' },
+    { label: 'Upcoming Appointments', value: stats.upcoming_appointments, color: 'var(--primary-teal)', icon: '📅' },
+    { label: 'Pending Requests', value: stats.pending_appointments || 0, color: 'var(--pending)', icon: '⏳' },
+  ].map(s => `
+    <div class="card stat-card">
+      <div class="icon" style="background:${s.color}1A;color:${s.color}">${s.icon}</div>
+      <div class="value">${s.value}</div>
+      <div class="label">${s.label}</div>
+    </div>`).join('');
+
+  const recentConcerns = (stats.recent_concerns || []).map(c => `
+    <a href="concern-detail.html?id=${c.id}" class="list-item" style="display:flex">
+      <div class="list-item-main">
+        <div class="list-item-title">${esc(c.subject)}</div>
+        <div class="list-item-sub">${esc(c.student_name)} · ${esc(c.category)}</div>
+        <div class="list-item-meta">
+          <span class="badge ${badgeClass(c.status)}">${c.status}</span>
+          ${c.is_urgent ? '<span class="badge badge-urgent">Urgent</span>' : ''}
+        </div>
+      </div>
+    </a>`).join('') || '<div class="empty-state">All caught up 🎉</div>';
+
+  const nextAppts = (stats.next_appointments || []).map(a => `
+    <div class="list-item">
+      <div class="list-item-main">
+        <div class="list-item-title">${esc(a.student_name)}</div>
+        <div class="list-item-sub">${fmtDate(a.appt_date)} at ${esc(a.appt_time)} · ${esc(a.type)}</div>
+      </div>
+      <span class="badge ${badgeClass(a.status)}">${a.status}</span>
+    </div>`).join('') || '<div class="empty-state">No upcoming appointments</div>';
+
+  content.innerHTML = `
+    <div class="grid grid-4" style="margin-bottom:24px">${statCards}</div>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="section-header">
+          <div class="section-title">Concerns Needing Attention</div>
+          <a href="concerns.html" style="font-size:13px;color:var(--primary-teal);font-weight:600">View all</a>
+        </div>
+        ${recentConcerns}
+      </div>
+      <div class="card">
+        <div class="section-header">
+          <div class="section-title">Upcoming Appointments</div>
+          <a href="appointments.html" style="font-size:13px;color:var(--primary-teal);font-weight:600">View all</a>
+        </div>
+        ${nextAppts}
+      </div>
+    </div>
+  `;
+})();
+</script>
+</body>
+</html>

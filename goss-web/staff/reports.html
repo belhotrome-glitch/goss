@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reports — GOSS Staff</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+function barChart(rows, labelKey, valueKey) {
+  const max = Math.max(1, ...rows.map(r => Number(r[valueKey])));
+  return rows.map(r => `
+    <div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+        <span>${esc(r[labelKey])}</span><span style="font-weight:600">${r[valueKey]}</span>
+      </div>
+      <div style="background:#F3F4F6;border-radius:6px;height:10px;overflow:hidden">
+        <div style="width:${(Number(r[valueKey]) / max) * 100}%;background:var(--primary-teal);height:100%"></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'staff') { location.href = '../student/dashboard.html'; return; }
+  renderShell(user, 'reports', 'Reports & Analytics');
+
+  const data = await api('/api/dashboard.php?action=reports');
+  const t = data.totals;
+
+  const statCards = [
+    { label: 'Total Concerns', value: t.total_concerns, icon: '💬' },
+    { label: 'Resolved', value: t.resolved, icon: '✅' },
+    { label: 'Total Appointments', value: t.total_appointments, icon: '📅' },
+    { label: 'Registered Students', value: t.total_students, icon: '🎓' },
+  ].map(s => `
+    <div class="card stat-card">
+      <div class="icon" style="background:var(--primary-teal-light);color:var(--primary-teal)">${s.icon}</div>
+      <div class="value">${s.value}</div>
+      <div class="label">${s.label}</div>
+    </div>`).join('');
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="grid grid-4" style="margin-bottom:24px">${statCards}</div>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="section-title">Concerns by Category</div>
+        ${barChart(data.by_category, 'category', 'c')}
+      </div>
+      <div class="card">
+        <div class="section-title">Concerns by Status</div>
+        ${barChart(data.by_status, 'status', 'c')}
+      </div>
+    </div>
+    <div class="card" style="margin-top:20px">
+      <div class="section-title">Concerns Submitted per Month</div>
+      ${barChart(data.by_month, 'ym', 'c')}
+    </div>
+  `;
+})();
+</script>
+</body>
+</html>
