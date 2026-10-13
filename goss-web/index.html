@@ -1,108 +1,108 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GOSS — Sign In</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guidance Office | Tangub City Global College</title>
+<meta name="description" content="The Guidance Office of Tangub City Global College: academic, career and personal support for students, with online concerns and appointments.">
 <link rel="icon" type="image/png" href="assets/img/logo.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="assets/css/landing.css">
 </head>
 <body>
-<div class="auth-wrap">
-  <div class="auth-card">
-    <div class="brand">
-      <div class="brand-logo"><img src="assets/img/logo.png" alt="Tangub City Global College logo"></div>
-      <h1>GOSS</h1>
-      <p>Guidance Office Support System</p>
+
+<header class="nav">
+  <a class="brand" href="#top">
+    <img class="logo-img" src="assets/img/logo.png" alt="Tangub City Global College logo">
+    <span class="brand-text">Guidance Office &middot; TCGC</span>
+  </a>
+  <nav>
+    <a href="#services">Services</a>
+    <a href="#how">How It Works</a>
+    <a href="#resources">Resources</a>
+    <a href="#contact">Contact</a>
+    <a class="btn small" href="#portal">Sign In</a>
+  </nav>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <p class="eyebrow">Tangub City Global College</p>
+    <h1>The Guidance Office is here to listen and to help.</h1>
+    <p class="lead">Whether it's your studies, your future career, or something personal, you can reach a guidance counselor online. Send a concern, chat privately with your counselor, and book an appointment.</p>
+    <div class="actions">
+      <a class="btn" href="login/student.html">Student Sign In</a>
+      <a class="btn ghost" href="#services">What We Help With</a>
     </div>
+  </section>
 
-    <div id="error" class="error-box hidden"></div>
-
-    <div class="role-toggle">
-      <button type="button" id="tab-student" class="active">Student</button>
-      <button type="button" id="tab-staff">Staff</button>
-      <button type="button" id="tab-admin">Admin</button>
+  <section id="services" class="section">
+    <h2>What We Help With</h2>
+    <p class="sub">You can send a concern to the Guidance Office under any of these categories.</p>
+    <div class="grid">
+      <article class="card"><span class="picon">📘</span><h3>Academic Issues</h3><p>Study planning, course load advice and support when your grades are slipping.</p></article>
+      <article class="card"><span class="picon">💼</span><h3>Career Guidance</h3><p>Resume reviews, internship guidance and career-path exploration.</p></article>
+      <article class="card"><span class="picon">🌱</span><h3>Mental Health &amp; Wellbeing</h3><p>Someone to talk to about stress and keeping a healthy study-life balance.</p></article>
+      <article class="card"><span class="picon">🤝</span><h3>Personal Issues</h3><p>Family, friendships or anything else on your mind.</p></article>
+      <article class="card"><span class="picon">💰</span><h3>Financial Concerns</h3><p>Talk to a counselor about financial difficulties that affect your studies.</p></article>
+      <article class="card"><span class="picon">🛡️</span><h3>Bullying &amp; Harassment</h3><p>Report bullying or harassment so the office can respond.</p></article>
     </div>
+  </section>
 
-    <form id="login-form">
-      <div class="field">
-        <label for="id_no" id="id-label">Student ID Number</label>
-        <input type="text" id="id_no" required placeholder="STUID#" autocomplete="username">
-      </div>
-      <div class="field">
-        <label for="password">Password</label>
-        <div class="password-wrap">
-          <input type="password" id="password" required placeholder="Enter your password" autocomplete="current-password">
-          <button type="button" id="toggle-password" class="toggle-password" aria-label="Show password">Show</button>
-        </div>
-      </div>
-      <button type="submit" class="btn" id="submit-btn">Sign In</button>
-    </form>
-  </div>
-</div>
+  <section id="how" class="section alt">
+    <h2>How It Works</h2>
+    <ol class="steps">
+      <li><strong>Sign in</strong><span>Use your student ID number on the student portal.</span></li>
+      <li><strong>Submit a concern</strong><span>Pick a category and describe what's going on. Mark it urgent if it can't wait.</span></li>
+      <li><strong>Chat with your counselor</strong><span>A counselor takes your case, and replies appear in your private message thread.</span></li>
+      <li><strong>Book an appointment</strong><span>Request an in-person or virtual session at a time that suits you.</span></li>
+      <li><strong>Share feedback</strong><span>After a completed appointment, rate your experience.</span></li>
+    </ol>
+  </section>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script>window.ROOT_PATH = "";</script>
-<script src="assets/js/supabase-config.js"></script>
-<script src="assets/js/app.js"></script>
-<script>
-let role = 'student';
-const tabStudent = document.getElementById('tab-student');
-const tabStaff = document.getElementById('tab-staff');
-const tabAdmin = document.getElementById('tab-admin');
-const idLabel = document.getElementById('id-label');
-const idInput = document.getElementById('id_no');
-function setActiveTab(btn) {
-  [tabStudent, tabStaff, tabAdmin].forEach((b) => b.classList.remove('active'));
-  btn.classList.add('active');
-}
-tabStudent.onclick = () => {
-  role = 'student'; setActiveTab(tabStudent);
-  idLabel.textContent = 'Student ID Number'; idInput.placeholder = 'STUID#';
-};
-tabStaff.onclick = () => {
-  role = 'staff'; setActiveTab(tabStaff);
-  idLabel.textContent = 'Staff ID'; idInput.placeholder = 'STFID#';
-};
-tabAdmin.onclick = () => {
-  role = 'admin'; setActiveTab(tabAdmin);
-  idLabel.textContent = 'Admin ID'; idInput.placeholder = 'ADMID#';
-};
+  <section class="section">
+    <h2>Why Use the Online Portal</h2>
+    <div class="grid">
+      <article class="card"><h3>Private conversations</h3><p>Messages on a case can be read only by you and the counselor handling it, plus system administrators.</p></article>
+      <article class="card"><h3>Easy appointments</h3><p>Request, track and cancel appointments from one place, in person or virtual.</p></article>
+      <article class="card"><h3>Stay informed</h3><p>Get notifications about replies and appointment updates, and see office announcements on your dashboard.</p></article>
+    </div>
+  </section>
 
-const passwordInput = document.getElementById('password');
-const togglePasswordBtn = document.getElementById('toggle-password');
-togglePasswordBtn.onclick = () => {
-  const isHidden = passwordInput.type === 'password';
-  passwordInput.type = isHidden ? 'text' : 'password';
-  togglePasswordBtn.textContent = isHidden ? 'Hide' : 'Show';
-  togglePasswordBtn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
-};
+  <section id="resources" class="section alt">
+    <h2>Guidance Resources</h2>
+    <div class="grid">
+      <article class="card"><span class="picon">🎓</span><h3>Academic Guidance</h3><p>Study planning, course load advice and academic probation support.</p></article>
+      <article class="card"><span class="picon">📖</span><h3>Study Resources</h3><p>Time-management and study-skill techniques, available at the Guidance Office or by asking a counselor.</p></article>
+      <article class="card"><span class="picon">📋</span><h3>School Policies</h3><p>Check the student handbook for attendance, conduct and academic policies, and ask a counselor if you need help understanding them.</p></article>
+    </div>
+    <div class="alert">
+      <strong>In an emergency</strong>
+      <p>For a life-threatening emergency, contact local emergency services immediately. For urgent concerns that aren't emergencies, submit a concern marked "Urgent" or contact the Guidance Office directly. Online wellbeing resources are not a substitute for medical or mental-health diagnosis or treatment.</p>
+    </div>
+  </section>
 
-document.getElementById('login-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const errBox = document.getElementById('error');
-  const btn = document.getElementById('submit-btn');
-  errBox.classList.add('hidden');
-  btn.disabled = true; btn.textContent = 'Signing in...';
-  try {
-    const idNo = document.getElementById('id_no').value.trim();
-    const password = document.getElementById('password').value;
-    if (!idNo) throw new Error(role === 'staff' ? 'Staff ID is required' : 'Student ID Number is required');
-    // Login is keyed off the ID number rather than an email — each account's
-    // ID number maps to a unique internal Supabase Auth login identifier.
-    const email = `${idNo.toLowerCase()}@goss.local`;
-    const { user } = await api('/api/auth.php?action=login', { method: 'POST', body: { email, password, role } });
-    location.href = user.role === 'admin' ? 'admin/dashboard.html' : user.role === 'staff' ? 'staff/dashboard.html' : 'student/dashboard.html';
-  } catch (err) {
-    errBox.textContent = err.message;
-    errBox.classList.remove('hidden');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Sign In';
-  }
-});
-</script>
+  <section id="portal" class="section">
+    <h2>Sign In to GOSS</h2>
+    <p class="sub">The Guidance Office Support System. Choose your portal.</p>
+    <div class="grid portal-grid">
+      <a class="card link-card portal-card" href="login/student.html"><span class="picon">🎓</span><h3>Student Login</h3><p>Submit concerns, book appointments and chat with your counselor.</p><span class="more">Sign in as student &rarr;</span></a>
+      <a class="card link-card portal-card" href="login/staff.html"><span class="picon">🧑‍🏫</span><h3>Staff Login</h3><p>For guidance counselors and office staff to manage concerns, appointments and reports.</p><span class="more">Sign in as staff &rarr;</span></a>
+    </div>
+  </section>
+
+  <section id="contact" class="section alt">
+    <h2>Find Us</h2>
+    <ul class="contact">
+      <li><strong>College address:</strong> Juan Luna St., Maloro, Tangub City, Misamis Occidental, Philippines</li>
+      <li><strong>College phone:</strong> (088) 545-2793</li>
+      <li><strong>College website:</strong> <a href="http://www.gadtc.edu.ph/">www.gadtc.edu.ph</a></li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <p>&copy; <span id="y"></span> Guidance Office, Tangub City Global College. All rights reserved.</p>
+</footer>
+<script>document.getElementById('y').textContent = new Date().getFullYear();</script>
 </body>
 </html>

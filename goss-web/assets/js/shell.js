@@ -2,7 +2,7 @@
 // Since pages now live in per-role folders (student/, staff/, admin/,
 // shared/), all nav hrefs below are resolved relative to the CURRENT page's
 // folder using window.ROOT_PATH (set inline on every page, '' for the root
-// index.html or '../' for anything one level deep).
+// the login page or '../' for anything one level deep).
 const RP = window.ROOT_PATH || '';
 
 const STUDENT_NAV = [
@@ -18,6 +18,7 @@ const STAFF_NAV = [
   { href: RP + 'staff/dashboard.html', icon: '🏠', label: 'Dashboard', key: 'dashboard' },
   { href: RP + 'staff/concerns.html', icon: '💬', label: 'All Concerns', key: 'concerns' },
   { href: RP + 'staff/appointments.html', icon: '📅', label: 'Appointments', key: 'appointments' },
+  { href: RP + 'staff/announcements.html', icon: '📣', label: 'Announcements', key: 'announcements' },
   { href: RP + 'staff/reports.html', icon: '📊', label: 'Reports', key: 'reports' },
   { href: RP + 'shared/notifications.html', icon: '🔔', label: 'Notifications', key: 'notifications' },
   { href: RP + 'staff/profile.html', icon: '👤', label: 'Profile', key: 'profile' },
@@ -30,7 +31,6 @@ const ADMIN_NAV = [
   { href: RP + 'admin/appointments.html', icon: '📅', label: 'Appointments', key: 'appointments' },
   { href: RP + 'admin/reports.html', icon: '📊', label: 'Reports', key: 'reports' },
   { href: RP + 'admin/audit-logs.html', icon: '🛡️', label: 'Audit Logs', key: 'audit' },
-  { href: RP + 'admin/announcements.html', icon: '📣', label: 'Announcements', key: 'announcements' },
 ];
 
 function renderShell(user, activeKey, pageTitle) {

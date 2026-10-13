@@ -350,7 +350,7 @@ create policy "audit_logs_select_admin" on public.audit_logs
   for select using (public.is_admin());
 
 -- ============================================================================
--- announcements — staff/admin publish, everyone signed-in reads published
+-- announcements — staff publish, everyone signed-in reads published
 -- ============================================================================
 drop policy if exists "announcements_select" on public.announcements;
 create policy "announcements_select" on public.announcements
@@ -358,15 +358,15 @@ create policy "announcements_select" on public.announcements
 
 drop policy if exists "announcements_write" on public.announcements;
 create policy "announcements_write" on public.announcements
-  for insert with check (public.is_staff());
+  for insert with check (public.my_role() = 'staff');
 
 drop policy if exists "announcements_update" on public.announcements;
 create policy "announcements_update" on public.announcements
-  for update using (public.is_staff());
+  for update using (public.my_role() = 'staff');
 
 drop policy if exists "announcements_delete" on public.announcements;
 create policy "announcements_delete" on public.announcements
-  for delete using (public.is_staff());
+  for delete using (public.my_role() = 'staff');
 
 -- ============================================================================
 -- feedback — a student may only create feedback for their OWN completed

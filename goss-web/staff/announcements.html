@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Announcements — GOSS Staff</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+async function load() {
+  const { announcements } = await api('/api/announcements.php?action=list');
+  document.getElementById('list').innerHTML = announcements.map(a => `
+    <div class="list-item">
+      <div class="list-item-main">
+        <div class="list-item-title">${esc(a.title)}</div>
+        <div class="list-item-sub">${esc(a.body)}</div>
+        <div class="list-item-meta">${fmtDate(a.created_at)}</div>
+      </div>
+      <button class="btn btn-sm btn-outline" onclick="del('${a.id}')">Delete</button>
+    </div>`).join('') || '<div class="empty-state">No announcements yet</div>';
+}
+
+async function del(id) {
+  if (!confirm('Delete this announcement?')) return;
+  await api('/api/announcements.php?action=delete', { method: 'POST', body: { id } });
+  await load();
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'staff') { location.href = user.role === 'admin' ? '../admin/dashboard.html' : '../student/dashboard.html'; return; }
+  renderShell(user, 'announcements', 'Announcements');
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="card" style="margin-bottom:20px">
+      <div class="section-header"><div class="section-title">Publish New Announcement</div></div>
+      <form id="new-form">
+        <div class="field"><label>Title</label><input id="a-title" required></div>
+        <div class="field"><label>Body</label><textarea id="a-body" rows="3" required></textarea></div>
+        <button class="btn" style="width:auto">Publish</button>
+      </form>
+    </div>
+    <div class="card"><div class="section-header"><div class="section-title">Published Announcements</div></div><div id="list"></div></div>
+  `;
+
+  document.getElementById('new-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = document.getElementById('a-title').value.trim();
+    const body = document.getElementById('a-body').value.trim();
+    if (!title || !body) return;
+    await api('/api/announcements.php?action=create', { method: 'POST', body: { title, body } });
+    document.getElementById('new-form').reset();
+    toast('Announcement published');
+    await load();
+  });
+
+  await load();
+})();
+</script>
+</body>
+</html>

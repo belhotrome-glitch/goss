@@ -1,0 +1,14 @@
+/* Per-role login pages: each role gets its own accent colour */
+body.portal-student{--portal:#1E7A34;--portal-light:#E3F3E5}
+body.portal-staff{--portal:#C75E0B;--portal-light:#FDE8D6}
+body.portal-admin{--portal:#1F2A44;--portal-light:#E4E8F2}
+.auth-card::before{background:var(--portal)}
+.auth-card .btn{background:var(--portal);border-color:var(--portal)}
+.auth-card .brand-logo{box-shadow:0 0 0 3px var(--portal-light),0 2px 6px rgba(0,0,0,.08)}
+.portal-badge{display:inline-block;background:var(--portal-light);color:var(--portal);font-weight:700;
+  font-size:12px;letter-spacing:.08em;text-transform:uppercase;padding:4px 12px;border-radius:999px}
+.portal-hint{font-size:13px;color:var(--text-secondary);text-align:center;margin:0 0 20px}
+.auth-links{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:20px;
+  padding-top:16px;border-top:1px solid var(--border);font-size:13px}
+.auth-links a{color:var(--portal);font-weight:600}
+.auth-links a:hover{text-decoration:underline}

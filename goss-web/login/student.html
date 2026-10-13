@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GOSS — Student Login</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="stylesheet" href="../assets/css/style.css">
+<link rel="stylesheet" href="../assets/css/login.css">
+</head>
+<body class="portal-student" data-role="student" data-label="Student ID Number">
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="brand">
+      <div class="brand-logo"><img src="../assets/img/logo.png" alt="Tangub City Global College logo"></div>
+      <span class="portal-badge">Student Portal</span>
+      <h1>GOSS</h1>
+      <p>Guidance Office Support System</p>
+    </div>
+    <p class="portal-hint">Sign in to submit concerns, book appointments and chat with your guidance counselor.</p>
+
+    <div id="error" class="error-box hidden"></div>
+
+    <form id="login-form">
+      <div class="field">
+        <label for="id_no">Student ID Number</label>
+        <input type="text" id="id_no" required placeholder="STUID#" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <div class="password-wrap">
+          <input type="password" id="password" required placeholder="Enter your password" autocomplete="current-password">
+          <button type="button" id="toggle-password" class="toggle-password" aria-label="Show password">Show</button>
+        </div>
+      </div>
+      <button type="submit" class="btn" id="submit-btn">Sign In</button>
+    </form>
+
+    <div class="auth-links">
+      <a href="../index.html">&larr; Back to home</a>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/login.js"></script>
+</body>
+</html>

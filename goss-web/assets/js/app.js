@@ -111,9 +111,9 @@ async function handleAuth(action, body) {
 
     const { data: userRow, error: uErr } = await sb.from('users').select('*').eq('id', data.user.id).maybeSingle();
     if (uErr || !userRow) { await sb.auth.signOut(); throw new Error('Invalid ID number or password'); }
-    if (role && userRow.role !== role && userRow.role !== 'admin') {
+    if (role && userRow.role !== role) {
       await sb.auth.signOut();
-      throw new Error(`This account is not registered as ${role}`);
+      throw new Error(`This is the ${role} login. Please use the ${userRow.role} login page instead.`);
     }
     if (userRow.is_active === false) {
       await sb.auth.signOut();
@@ -591,7 +591,7 @@ async function handleAnnouncements(action, body) {
   }
 
   if (action === 'create') {
-    if (user.role === 'student') throw new Error('Forbidden');
+    if (user.role !== 'staff') throw new Error('Forbidden');
     const title = (body.title || '').trim();
     const text = (body.body || '').trim();
     if (!title || !text) throw new Error('Title and body are required');
@@ -603,7 +603,7 @@ async function handleAnnouncements(action, body) {
   }
 
   if (action === 'delete') {
-    if (user.role === 'student') throw new Error('Forbidden');
+    if (user.role !== 'staff') throw new Error('Forbidden');
     await sb.from('announcements').delete().eq('id', body.id);
     await auditLog('announcement_deleted', 'announcement', body.id, null);
     return { ok: true };
@@ -845,21 +845,66 @@ function toast(msg) {
   setTimeout(() => t.remove(), 2600);
 }
 
+// Each role has its own login page (login/student.html, login/staff.html,
+// admindashboard/). Pages live in per-role folders, so the folder tells us
+// which login page to send someone back to.
+function loginUrl(role) {
+  const p = location.pathname;
+  const r = role || (p.includes('/admin/') ? 'admin' : p.includes('/staff/') ? 'staff' : 'student');
+  return (window.ROOT_PATH || '') + (r === 'admin' ? 'admindashboard/' : 'login/' + r + '.html');
+}
+
 async function requireAuth() {
   try {
     const { user } = await api('/api/auth.php?action=me');
-    if (!user) { location.href = (window.ROOT_PATH || '') + 'index.html'; return null; }
+    if (!user) { location.href = loginUrl(); return null; }
+    // Role guard: student/, staff/ and admin/ pages only open for that role.
+    // Anyone else is sent to their own dashboard (shared/ pages are open to all).
+    const m = location.pathname.match(/\/(student|staff|admin)\/[^/]*$/);
+    if (m && user.role !== m[1]) {
+      location.href = (window.ROOT_PATH || '') + user.role + '/dashboard.html';
+      return null;
+    }
     return user;
   } catch {
-    location.href = (window.ROOT_PATH || '') + 'index.html';
+    location.href = loginUrl();
     return null;
   }
 }
 
-async function logout() {
+// Asks for confirmation first, then signs out.
+function logout() {
+  if (document.getElementById('logout-modal')) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'logout-modal';
+  overlay.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="logout-title" style="max-width:380px">
+      <div class="modal-header"><h3 id="logout-title">Log out?</h3></div>
+      <p style="margin:0 0 20px;color:var(--text-secondary);font-size:14px">Are you sure you want to log out?</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button type="button" class="btn btn-outline btn-sm" id="logout-cancel">Cancel</button>
+        <button type="button" class="btn btn-danger btn-sm" id="logout-confirm">Yes, log out</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.getElementById('logout-cancel').onclick = close;
+  const confirmBtn = document.getElementById('logout-confirm');
+  confirmBtn.onclick = async () => {
+    confirmBtn.disabled = true; confirmBtn.textContent = 'Logging out...';
+    await performLogout();
+  };
+  confirmBtn.focus();
+}
+
+async function performLogout() {
+  let role = null;
+  try { const { user } = await api('/api/auth.php?action=me'); role = user && user.role; } catch {}
   await auditLog('logout', 'user', null, null);
   await api('/api/auth.php?action=logout', { method: 'POST' });
-  location.href = (window.ROOT_PATH || '') + 'index.html';
+  location.href = loginUrl(role);
 }
 
 // ============================================================================

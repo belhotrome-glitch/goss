@@ -69,20 +69,19 @@ the full list.
   average resolution time. No individual case content.
 - `admin-audit-logs.html` — latest 200 audit events (who did what, to which
   record, when — never message content, passwords, or tokens).
-- `admin-announcements.html` — publish/delete announcements.
 
 ### Other additions
 - `audit_logs` — write-only from the client (insert for your own user id
   only), admin-only read. Logged: login, logout, password change, concern
   created/updated, appointment created/status-changed, role/active-status
   changes, announcement create/delete, feedback submitted.
-- `announcements` — staff/admin publish, students see them on their
-  dashboard.
+- `announcements` — staff publish (from `staff/announcements.html`), students see them on their
+  dashboard. Admins do not manage announcements.
 - `feedback` — students can rate a **Completed** appointment once
   (enforced in RLS via a subquery, not just the UI).
 - `guidance-resources.html` — static academic/career/wellbeing/emergency
   resources page, linked from the student nav.
-- Admin login tab added to `index.html` alongside Student/Staff.
+- Admin login is hidden from the public site: it lives at `/admindashboard/` (type `/admindashboard` after the site URL). There is no link to it anywhere.
 - `supabase/bootstrap.sql` — template for creating your first admin account
   directly in Supabase (no credentials shipped in this repo — see Setup).
 
@@ -215,16 +214,17 @@ staff accounts.
 Pages are now organized into per-role folders rather than flat
 `role-page.html` filenames:
 ```
-/index.html                    Sign-in (Student / Staff / Admin tabs)
+/index.html                    Landing page (Student / Staff login links only)
+/admindashboard/               Admin login (reachable only by typing the URL)
 /student/                      Student portal
   dashboard.html, concerns.html, concern-detail.html,
   submit.html, appointments.html
 /staff/                        Staff/counselor portal
   dashboard.html, concerns.html, concern-detail.html,
-  appointments.html, reports.html, profile.html
+  appointments.html, reports.html, profile.html, announcements.html
 /admin/                        Admin dashboard (new)
   dashboard.html, users.html, concerns.html, appointments.html,
-  reports.html, audit-logs.html, announcements.html
+  reports.html, audit-logs.html
 /shared/                       Pages any signed-in role can reach
   notifications.html, guidance-resources.html
 /assets/css/style.css          Styling (unchanged)
