@@ -715,8 +715,10 @@ async function handleDashboard(action) {
 
       const appts = check(await sb.from('appointments').select('*').eq('student_id', user.id));
       const today = todayStr();
-      const upcoming = appts.filter((a) => a.status === 'Scheduled' && a.appt_date >= today)
-        .sort((a, b) => a.appt_date.localeCompare(b.appt_date));
+      const upcoming = appts
+        .filter((a) => ['Pending', 'Scheduled'].includes(a.status) && a.appt_date >= today)
+        .sort((a, b) => a.appt_date.localeCompare(b.appt_date) ||
+          String(a.appt_time).localeCompare(String(b.appt_time)));
       const nextAppointments = upcoming.slice(0, 3).map((a) => ({
         ...a, staff_name: usersMap[a.staff_id] ? usersMap[a.staff_id].full_name : null,
       }));
@@ -743,8 +745,10 @@ async function handleDashboard(action) {
 
     const appts = check(await sb.from('appointments').select('*').eq('staff_id', user.id));
     const today = todayStr();
-    const upcoming = appts.filter((a) => a.status === 'Scheduled' && a.appt_date >= today)
-      .sort((a, b) => a.appt_date.localeCompare(b.appt_date));
+    const upcoming = appts
+      .filter((a) => ['Pending', 'Scheduled'].includes(a.status) && a.appt_date >= today)
+      .sort((a, b) => a.appt_date.localeCompare(b.appt_date) ||
+        String(a.appt_time).localeCompare(String(b.appt_time)));
     const pendingAppointments = appts.filter((a) => a.status === 'Pending').length;
 
     const recent = concerns
