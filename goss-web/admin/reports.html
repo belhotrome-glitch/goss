@@ -6,6 +6,17 @@
 <title>Reports — GOSS Admin</title>
 <link rel="icon" type="image/png" href="../assets/img/logo.png">
 <link rel="stylesheet" href="../assets/css/style.css">
+<style>
+@media print {
+  .sidebar, .topbar, .report-controls, .report-note { display: none !important; }
+  body, .app-shell, .main, .content { display: block; min-height: 0; overflow: visible; background: #fff; }
+  .content { padding: 0; }
+  .report-print-title { display: block !important; }
+  .grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .card { break-inside: avoid; box-shadow: none; }
+}
+.report-print-title { display: none; }
+</style>
 </head>
 <body>
 <div class="app-shell" id="shell"></div>
@@ -68,6 +79,7 @@ function downloadReport() {
 function renderReport(r) {
   currentReport = r;
   document.getElementById('download-report').disabled = false;
+  document.getElementById('print-report').disabled = false;
   const cards = [
     { label: 'Student Concerns', value: r.concerns_total, icon: '💬', color: 'var(--primary-teal)' },
     { label: 'Students with Concerns', value: r.students_with_concerns, icon: '🎓', color: 'var(--in-progress)' },
@@ -82,6 +94,7 @@ function renderReport(r) {
     </div>`).join('');
 
   document.getElementById('report-results').innerHTML = `
+    <h1 class="report-print-title">GOSS Admin Report</h1>
     <div class="grid grid-3" style="margin-bottom:24px">${cards}</div>
     <div class="grid grid-2" style="margin-bottom:24px">
       ${reportRows('Concerns by Case Status', r.concerns_by_status, 'status', 'count')}
@@ -93,8 +106,8 @@ function renderReport(r) {
       ${reportRows('Appointments by Month', r.appointments_by_month, 'month', 'count')}
       ${reportRows('Counselor Appointment Workload', r.counselor_workload, 'name', 'count')}
     </div>
-    <p class="list-item-sub">Message reporting contains counts and sender roles only. Message content and individual case details are not included.</p>
-    <p class="list-item-sub">Generated ${fmtDateTime(new Date().toISOString())}</p>
+    <p class="list-item-sub report-note">Message reporting contains counts and sender roles only. Message content and individual case details are not included.</p>
+    <p class="list-item-sub report-note">Generated ${fmtDateTime(new Date().toISOString())}</p>
   `;
 }
 
@@ -107,6 +120,7 @@ async function generateReport() {
   error.classList.add('hidden');
   currentReport = null;
   document.getElementById('download-report').disabled = true;
+  document.getElementById('print-report').disabled = true;
   button.disabled = true;
   button.textContent = 'Generating...';
   try {
@@ -115,6 +129,9 @@ async function generateReport() {
     if (end) query.set('end_date', end);
     const report = await api('/api/admin.php?action=reports&' + query.toString());
     renderReport(report);
+    if (new URLSearchParams(location.search).get('print') === '1') {
+      setTimeout(() => window.print(), 250);
+    }
   } catch (err) {
     results.innerHTML = '';
     error.textContent = err.message;
@@ -133,7 +150,7 @@ async function generateReport() {
 
   const content = document.getElementById('page-content');
   content.innerHTML = `
-    <div class="card" style="margin-bottom:20px">
+    <div class="card report-controls" style="margin-bottom:20px">
       <div class="section-header"><div class="section-title">Generate Report</div></div>
       <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
         <div class="field" style="margin:0">
@@ -146,6 +163,7 @@ async function generateReport() {
         </div>
         <button class="btn" id="generate-report" type="button">Generate Report</button>
         <button class="btn btn-outline" id="download-report" type="button" disabled>Download CSV</button>
+        <button class="btn btn-outline" id="print-report" type="button" disabled>Print Report</button>
       </div>
     </div>
     <div id="report-error" class="error-box hidden"></div>
@@ -153,6 +171,7 @@ async function generateReport() {
   `;
   document.getElementById('generate-report').addEventListener('click', generateReport);
   document.getElementById('download-report').addEventListener('click', downloadReport);
+  document.getElementById('print-report').addEventListener('click', () => window.print());
   await generateReport();
 })();
 </script>
