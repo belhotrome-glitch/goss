@@ -443,13 +443,36 @@ async function handleAdmin(action, params, body) {
 
   if (action === 'overview') {
     const [users, concerns, appts, notifs] = await Promise.all([
-      sb.from('users').select('id, role, is_active'),
+      sb.from('users').select('id, role, is_active, full_name'),
       sb.from('concerns').select('id, status'),
-      sb.from('appointments').select('id, status'),
+      sb.from('appointments').select('id, status, appt_date, appt_time, type, student_id, staff_id'),
       sb.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(10),
     ]);
     check(users); check(concerns); check(appts);
     const u = users.data, c = concerns.data, a = appts.data;
+    const usersById = {};
+    u.forEach((row) => { usersById[row.id] = row; });
+    const appointments = a.map((appointment) => ({
+      ...appointment,
+      student_name: usersById[appointment.student_id] ? usersById[appointment.student_id].full_name : 'Student',
+      staff_name: usersById[appointment.staff_id] ? usersById[appointment.staff_id].full_name : 'Counselor',
+    }));
+    const today = todayStr();
+    const activeAppointments = appointments
+      .filter((appointment) => appointment.status === 'Pending' ||
+        (appointment.status === 'Scheduled' && appointment.appt_date >= today))
+      .sort((left, right) => {
+        if (left.status !== right.status) return left.status === 'Pending' ? -1 : 1;
+        const dateOrder = String(left.appt_date).localeCompare(String(right.appt_date));
+        return dateOrder || String(left.appt_time).localeCompare(String(right.appt_time));
+      });
+    const recentAppointments = appointments
+      .filter((appointment) => appointment.status !== 'Pending' &&
+        !(appointment.status === 'Scheduled' && appointment.appt_date >= today))
+      .sort((left, right) => {
+        const dateOrder = String(right.appt_date).localeCompare(String(left.appt_date));
+        return dateOrder || String(right.appt_time).localeCompare(String(left.appt_time));
+      });
     return {
       total_students: u.filter((x) => x.role === 'student').length,
       total_staff: u.filter((x) => x.role === 'staff').length,
@@ -457,7 +480,8 @@ async function handleAdmin(action, params, body) {
       total_concerns: c.length,
       pending_concerns: c.filter((x) => x.status === 'Pending').length,
       total_appointments: a.length,
-      pending_appointments: a.filter((x) => x.status === 'Scheduled').length,
+      pending_appointments: a.filter((x) => x.status === 'Pending').length,
+      appointments: [...activeAppointments, ...recentAppointments].slice(0, 8),
       recent_activity: notifs.data || [],
     };
   }

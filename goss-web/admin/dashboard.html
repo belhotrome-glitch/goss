@@ -55,9 +55,25 @@
       <div class="list-item-meta">${fmtDateTime(n.created_at)}</div>
     </div>`).join('') || '<div class="empty-state">No recent activity</div>';
 
+  const appointments = (stats.appointments || []).map(a => `
+    <div class="list-item">
+      <div class="list-item-main">
+        <div class="list-item-title">${esc(a.student_name)} · ${esc(a.staff_name)}</div>
+        <div class="list-item-sub">${fmtDate(a.appt_date)} at ${esc(a.appt_time)} · ${esc(a.type)}</div>
+      </div>
+      <div class="list-item-meta"><span class="badge ${badgeClass(a.status)}">${esc(a.status)}</span></div>
+    </div>`).join('') || '<div class="empty-state">No appointments yet</div>';
+
   const reportsUrl = 'reports.html';
   content.innerHTML = `
     <div class="grid grid-3" style="margin-bottom:24px">${statCards}</div>
+    <div class="card" style="margin-bottom:24px">
+      <div class="section-header">
+        <div class="section-title">Appointments</div>
+        <a href="appointments.html" style="font-size:13px;color:var(--primary-teal);font-weight:600">View all</a>
+      </div>
+      ${appointments}
+    </div>
     <div class="card" style="margin-bottom:24px">
       <div class="section-header"><div class="section-title">Reports &amp; Analytics</div></div>
       <p class="list-item-sub">Generate reports on student concerns, case statuses, message activity, and appointments. Reports contain aggregate counts only.</p>
