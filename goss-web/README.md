@@ -64,9 +64,11 @@ the full list.
   assignment) — deliberately does **not** expose message content, per least
   privilege.
 - `admin-appointments.html` — all appointments, filterable table.
-- `admin-reports.html` — aggregate stats only: by-category, urgency,
-  completed/cancelled/no-show counts, no-show rate, counselor workload,
-  average resolution time. No individual case content.
+- `admin/reports.html` — date-filterable aggregate reports for student
+  concerns, case statuses, message counts by sender role/month, and
+  appointments by status/month and counselor workload. CSV export includes
+  aggregate counts only; message content and individual case details are
+  never included.
 - `admin-audit-logs.html` — latest 200 audit events (who did what, to which
   record, when — never message content, passwords, or tokens).
 
@@ -108,6 +110,11 @@ the full list.
 ### 2. Run the schema
 SQL Editor → paste `supabase/schema.sql` → Run. Safe to re-run on a database
 that already has the v1 schema — it upgrades in place.
+
+If booking fails with `new row for relation "appointments" violates check
+constraint "appointments_status_check"`, the database has an outdated status
+constraint. Run `supabase/fix_appointments_status_check.sql` in the Supabase
+SQL Editor; it updates the constraint to match the statuses used by the app.
 
 ### 3. Configure the frontend
 `assets/js/supabase-config.js` → set `SUPABASE_URL` and `SUPABASE_ANON_KEY`
@@ -243,4 +250,3 @@ page is currently open — see `assets/js/shell.js` and the `requireAuth()` /
 `logout()` redirects in `assets/js/app.js`. If you add new pages under a
 role folder, copy that same `<script>window.ROOT_PATH = "../";</script>`
 line before the `supabase-config.js` include.
-

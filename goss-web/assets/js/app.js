@@ -526,32 +526,60 @@ async function handleAdmin(action, params, body) {
   }
 
   if (action === 'reports') {
-    const [concernsRes, apptsRes] = await Promise.all([
-      sb.from('concerns').select('*'),
-      sb.from('appointments').select('*'),
+    const startDate = params.get('start_date') || '';
+    const endDate = params.get('end_date') || '';
+    if ((startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) ||
+        (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) ||
+        (startDate && endDate && startDate > endDate)) {
+      throw new Error('Choose a valid date range');
+    }
+
+    let concernsQuery = sb.from('concerns').select('id, student_id, category, is_urgent, status, created_at');
+    let messagesQuery = sb.from('messages').select('id, sender_id, sent_at');
+    let appointmentsQuery = sb.from('appointments').select('id, status, appt_date, staff_id');
+    if (startDate) {
+      concernsQuery = concernsQuery.gte('created_at', `${startDate} 00:00:00`);
+      messagesQuery = messagesQuery.gte('sent_at', `${startDate} 00:00:00`);
+      appointmentsQuery = appointmentsQuery.gte('appt_date', startDate);
+    }
+    if (endDate) {
+      concernsQuery = concernsQuery.lte('created_at', `${endDate} 23:59:59`);
+      messagesQuery = messagesQuery.lte('sent_at', `${endDate} 23:59:59`);
+      appointmentsQuery = appointmentsQuery.lte('appt_date', endDate);
+    }
+
+    const [concernsRes, messagesRes, apptsRes] = await Promise.all([
+      concernsQuery,
+      messagesQuery,
+      appointmentsQuery,
     ]);
     const concerns = check(concernsRes);
+    const messages = check(messagesRes);
     const appts = check(apptsRes);
     const usersMap = await fetchAllUsersMap();
 
     const byCategory = {};
     concerns.forEach((c) => { byCategory[c.category] = (byCategory[c.category] || 0) + 1; });
-    const byUrgency = { urgent: concerns.filter((c) => c.is_urgent).length, normal: concerns.filter((c) => !c.is_urgent).length };
-
-    const resolved = concerns.filter((c) => c.status === 'Resolved' && c.resolved_at);
-    const avgResolutionHours = resolved.length
-      ? resolved.reduce((sum, c) => {
-        const start = new Date((c.created_at || '').replace(' ', 'T'));
-        const end = new Date((c.resolved_at || '').replace(' ', 'T'));
-        const hrs = (end - start) / 36e5;
-        return sum + (isFinite(hrs) && hrs >= 0 ? hrs : 0);
-      }, 0) / resolved.length
-      : null;
-
-    const completed = appts.filter((a) => a.status === 'Completed').length;
-    const cancelled = appts.filter((a) => a.status === 'Cancelled').length;
-    const noShow = appts.filter((a) => a.status === 'No-Show').length;
-    const noShowRate = appts.length ? (noShow / appts.length) * 100 : 0;
+    const concernStatuses = ['Pending', 'In Progress', 'Resolved', 'Closed'];
+    const appointmentStatuses = ['Pending', 'Scheduled', 'Completed', 'Cancelled', 'No-Show'];
+    const byStatus = (rows, statuses, key) => {
+      const counts = {};
+      rows.forEach((row) => { counts[row[key]] = (counts[row[key]] || 0) + 1; });
+      return [
+        ...statuses.map((status) => ({ status, count: counts[status] || 0 })),
+        ...Object.keys(counts).filter((status) => !statuses.includes(status))
+          .map((status) => ({ status, count: counts[status] })),
+      ];
+    };
+    const byMonth = (rows, getDate) => {
+      const counts = {};
+      rows.forEach((row) => {
+        const month = (getDate(row) || '').slice(0, 7);
+        if (month) counts[month] = (counts[month] || 0) + 1;
+      });
+      return Object.entries(counts).sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, count]) => ({ month, count }));
+    };
 
     const workloadMap = {};
     appts.forEach((a) => {
@@ -559,16 +587,29 @@ async function handleAdmin(action, params, body) {
       workloadMap[name] = (workloadMap[name] || 0) + 1;
     });
     const counselor_workload = Object.entries(workloadMap).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+    const messageSenderMap = {};
+    messages.forEach((message) => {
+      const role = usersMap[message.sender_id] ? usersMap[message.sender_id].role : 'unknown';
+      messageSenderMap[role] = (messageSenderMap[role] || 0) + 1;
+    });
 
     return {
-      by_category: Object.entries(byCategory).map(([category, c]) => ({ category, c })),
-      by_urgency: byUrgency,
-      appointments_completed: completed,
-      appointments_cancelled: cancelled,
-      appointments_no_show: noShow,
-      no_show_rate: Math.round(noShowRate * 10) / 10,
+      period: { start_date: startDate, end_date: endDate },
+      concerns_total: concerns.length,
+      students_with_concerns: new Set(concerns.map((c) => c.student_id)).size,
+      urgent_concerns: concerns.filter((c) => c.is_urgent).length,
+      concerns_by_category: Object.entries(byCategory).map(([category, count]) => ({ category, count }))
+        .sort((a, b) => b.count - a.count),
+      concerns_by_status: byStatus(concerns, concernStatuses, 'status'),
+      concerns_by_month: byMonth(concerns, (c) => c.created_at),
+      messages_total: messages.length,
+      messages_by_sender_role: Object.entries(messageSenderMap)
+        .map(([role, count]) => ({ role, count })).sort((a, b) => b.count - a.count),
+      messages_by_month: byMonth(messages, (m) => m.sent_at),
+      appointments_total: appts.length,
+      appointments_by_status: byStatus(appts, appointmentStatuses, 'status'),
+      appointments_by_month: byMonth(appts, (a) => a.appt_date),
       counselor_workload,
-      avg_resolution_hours: avgResolutionHours !== null ? Math.round(avgResolutionHours * 10) / 10 : null,
     };
   }
 

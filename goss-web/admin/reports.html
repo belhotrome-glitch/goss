@@ -15,31 +15,65 @@
 <script src="../assets/js/app.js"></script>
 <script src="../assets/js/shell.js"></script>
 <script>
-(async () => {
-  const user = await requireAuth();
-  if (!user) return;
-  if (user.role !== 'admin') { location.href = user.role === 'staff' ? '../staff/dashboard.html' : '../student/dashboard.html'; return; }
-  renderShell(user, 'reports', 'Reports & Analytics');
+let currentReport = null;
 
-  const content = document.getElementById('page-content');
-  content.innerHTML = `<div class="empty-state">Loading...</div>`;
+function reportRows(title, rows, labelKey, countKey) {
+  const content = rows.map(row => `
+    <div class="list-item">
+      <div class="list-item-main">${esc(row[labelKey])}</div>
+      <div class="list-item-meta">${row[countKey]}</div>
+    </div>`).join('');
+  return `<div class="card">
+    <div class="section-header"><div class="section-title">${title}</div></div>
+    ${content || '<div class="empty-state">No data for this period</div>'}
+  </div>`;
+}
 
-  const r = await api('/api/admin.php?action=reports');
+function reportCsvCell(value) {
+  const text = String(value ?? '');
+  const safeText = /^[=+\-@\t\r]/.test(text) ? "'" + text : text;
+  return '"' + safeText.replace(/"/g, '""') + '"';
+}
 
-  const byCategory = r.by_category.map(x => `
-    <div class="list-item"><div class="list-item-main">${esc(x.category)}</div><div class="list-item-meta">${x.c}</div></div>
-  `).join('') || '<div class="empty-state">No data</div>';
+function downloadReport() {
+  if (!currentReport) return;
+  const r = currentReport;
+  const rows = [
+    ['Section', 'Metric', 'Count'],
+    ['Period', 'Start date', r.period.start_date || 'All time'],
+    ['Period', 'End date', r.period.end_date || 'All time'],
+    ['Concerns', 'Total concerns', r.concerns_total],
+    ['Concerns', 'Students with concerns', r.students_with_concerns],
+    ['Concerns', 'Urgent concerns', r.urgent_concerns],
+    ['Messages', 'Total messages', r.messages_total],
+    ['Appointments', 'Total appointments', r.appointments_total],
+    ...r.concerns_by_category.map(x => ['Concerns by category', x.category, x.count]),
+    ...r.concerns_by_status.map(x => ['Concerns by status', x.status, x.count]),
+    ...r.concerns_by_month.map(x => ['Concerns by month', x.month, x.count]),
+    ...r.messages_by_sender_role.map(x => ['Messages by sender role', x.role, x.count]),
+    ...r.messages_by_month.map(x => ['Messages by month', x.month, x.count]),
+    ...r.appointments_by_status.map(x => ['Appointments by status', x.status, x.count]),
+    ...r.appointments_by_month.map(x => ['Appointments by month', x.month, x.count]),
+    ...r.counselor_workload.map(x => ['Appointments by counselor', x.name, x.count]),
+  ];
+  const csv = rows.map(row => row.map(reportCsvCell).join(',')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'goss-admin-report.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
-  const workload = r.counselor_workload.map(x => `
-    <div class="list-item"><div class="list-item-main">${esc(x.name)}</div><div class="list-item-meta">${x.count} appointments</div></div>
-  `).join('') || '<div class="empty-state">No data</div>';
-
-  const statCards = [
-    { label: 'Urgent Concerns', value: r.by_urgency.urgent, icon: '🚨', color: 'var(--urgent)' },
-    { label: 'Completed Appointments', value: r.appointments_completed, icon: '✅', color: 'var(--resolved)' },
-    { label: 'Cancelled Appointments', value: r.appointments_cancelled, icon: '🚫', color: 'var(--closed)' },
-    { label: 'No-Show Rate', value: r.no_show_rate + '%', icon: '📉', color: 'var(--pending)' },
-    { label: 'Avg. Resolution Time', value: r.avg_resolution_hours !== null ? r.avg_resolution_hours + 'h' : '—', icon: '⏱️', color: 'var(--in-progress)' },
+function renderReport(r) {
+  currentReport = r;
+  document.getElementById('download-report').disabled = false;
+  const cards = [
+    { label: 'Student Concerns', value: r.concerns_total, icon: '💬', color: 'var(--primary-teal)' },
+    { label: 'Students with Concerns', value: r.students_with_concerns, icon: '🎓', color: 'var(--in-progress)' },
+    { label: 'Urgent Concerns', value: r.urgent_concerns, icon: '🚨', color: 'var(--urgent)' },
+    { label: 'Messages (count only)', value: r.messages_total, icon: '✉️', color: 'var(--pending)' },
+    { label: 'Appointments', value: r.appointments_total, icon: '📅', color: 'var(--resolved)' },
   ].map(s => `
     <div class="card stat-card">
       <div class="icon" style="background:${s.color}1A;color:${s.color}">${s.icon}</div>
@@ -47,20 +81,79 @@
       <div class="label">${s.label}</div>
     </div>`).join('');
 
+  document.getElementById('report-results').innerHTML = `
+    <div class="grid grid-3" style="margin-bottom:24px">${cards}</div>
+    <div class="grid grid-2" style="margin-bottom:24px">
+      ${reportRows('Concerns by Case Status', r.concerns_by_status, 'status', 'count')}
+      ${reportRows('Concerns by Category', r.concerns_by_category, 'category', 'count')}
+      ${reportRows('Messages by Sender Role', r.messages_by_sender_role, 'role', 'count')}
+      ${reportRows('Appointments by Status', r.appointments_by_status, 'status', 'count')}
+      ${reportRows('Concerns by Month', r.concerns_by_month, 'month', 'count')}
+      ${reportRows('Messages by Month', r.messages_by_month, 'month', 'count')}
+      ${reportRows('Appointments by Month', r.appointments_by_month, 'month', 'count')}
+      ${reportRows('Counselor Appointment Workload', r.counselor_workload, 'name', 'count')}
+    </div>
+    <p class="list-item-sub">Message reporting contains counts and sender roles only. Message content and individual case details are not included.</p>
+    <p class="list-item-sub">Generated ${fmtDateTime(new Date().toISOString())}</p>
+  `;
+}
+
+async function generateReport() {
+  const button = document.getElementById('generate-report');
+  const error = document.getElementById('report-error');
+  const results = document.getElementById('report-results');
+  const start = document.getElementById('start-date').value;
+  const end = document.getElementById('end-date').value;
+  error.classList.add('hidden');
+  currentReport = null;
+  document.getElementById('download-report').disabled = true;
+  button.disabled = true;
+  button.textContent = 'Generating...';
+  try {
+    const query = new URLSearchParams();
+    if (start) query.set('start_date', start);
+    if (end) query.set('end_date', end);
+    const report = await api('/api/admin.php?action=reports&' + query.toString());
+    renderReport(report);
+  } catch (err) {
+    results.innerHTML = '';
+    error.textContent = err.message;
+    error.classList.remove('hidden');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Generate Report';
+  }
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'admin') { location.href = user.role === 'staff' ? '../staff/dashboard.html' : '../student/dashboard.html'; return; }
+  renderShell(user, 'reports', 'Reports & Analytics');
+
+  const content = document.getElementById('page-content');
   content.innerHTML = `
-    <div class="grid grid-3" style="margin-bottom:24px">${statCards}</div>
-    <div class="grid grid-2">
-      <div class="card">
-        <div class="section-header"><div class="section-title">Concerns by Category</div></div>
-        ${byCategory}
-      </div>
-      <div class="card">
-        <div class="section-header"><div class="section-title">Counselor Workload</div></div>
-        ${workload}
+    <div class="card" style="margin-bottom:20px">
+      <div class="section-header"><div class="section-title">Generate Report</div></div>
+      <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+        <div class="field" style="margin:0">
+          <label for="start-date">From</label>
+          <input type="date" id="start-date">
+        </div>
+        <div class="field" style="margin:0">
+          <label for="end-date">To</label>
+          <input type="date" id="end-date">
+        </div>
+        <button class="btn" id="generate-report" type="button">Generate Report</button>
+        <button class="btn btn-outline" id="download-report" type="button" disabled>Download CSV</button>
       </div>
     </div>
-    <p class="list-item-sub" style="margin-top:16px">Reports show aggregate counts only — no individual concern content or messages are surfaced here, in line with confidentiality-by-design.</p>
+    <div id="report-error" class="error-box hidden"></div>
+    <div id="report-results"><div class="empty-state">Choose an optional date range and generate a report.</div></div>
   `;
+  document.getElementById('generate-report').addEventListener('click', generateReport);
+  document.getElementById('download-report').addEventListener('click', downloadReport);
+  await generateReport();
 })();
 </script>
 </body>
