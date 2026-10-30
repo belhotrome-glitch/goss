@@ -191,9 +191,6 @@ async function handleConcerns(action, params, body) {
     const c = check(await sb.from('concerns').select('*').eq('id', id).maybeSingle());
     if (!c) throw new Error('Not found');
     if (user.role === 'student' && c.student_id !== user.id) throw new Error('Forbidden');
-    if (user.role === 'staff' && c.assigned_to && c.assigned_to !== user.id) {
-      throw new Error('You can only access conversations for unassigned cases or cases assigned to you');
-    }
 
     const student = usersMap[c.student_id];
     const staff = c.assigned_to ? usersMap[c.assigned_to] : null;
@@ -202,7 +199,15 @@ async function handleConcerns(action, params, body) {
     c.student_course = student ? student.course : null;
     c.staff_name = staff ? staff.full_name : null;
 
-    const msgRows = await fetchAllRows(() => sb.from('messages').select('*').eq('concern_id', id));
+    const conversation = check(await sb.from('concern_conversations')
+      .select('*').eq('concern_id', id).is('ended_at', null).maybeSingle());
+    if (!conversation) throw new Error('No active conversation exists for this concern. Ask an administrator to apply the chat history migration.');
+    c.conversation_id = conversation.id;
+    c.conversation_started_at = conversation.started_at;
+    c.conversation_staff_name = conversation.assigned_staff_id && usersMap[conversation.assigned_staff_id]
+      ? usersMap[conversation.assigned_staff_id].full_name : null;
+
+    const msgRows = await fetchAllRows(() => sb.from('messages').select('*').eq('conversation_id', conversation.id));
     msgRows.sort((a, b) => (a.sent_at || '').localeCompare(b.sent_at || ''));
     const messages = msgRows.map((m) => {
       const sender = usersMap[m.sender_id];
@@ -214,6 +219,85 @@ async function handleConcerns(action, params, body) {
     });
 
     return { concern: c, messages };
+  }
+
+  if (action === 'conversation_list') {
+    if (user.role !== 'staff') throw new Error('Forbidden');
+    const conversations = await fetchAllRows(() => sb.from('concern_conversations').select('*'));
+    const concernIds = [...new Set(conversations.map((conversation) => conversation.concern_id))];
+    const concerns = concernIds.length
+      ? check(await sb.from('concerns').select('*').in('id', concernIds))
+      : [];
+    const concernsMap = {};
+    concerns.forEach((concern) => { concernsMap[concern.id] = concern; });
+    const rows = conversations
+      .filter((conversation) => concernsMap[conversation.concern_id])
+      .map((conversation) => {
+        const concern = concernsMap[conversation.concern_id];
+        const student = usersMap[concern.student_id];
+        const assignedStaff = conversation.assigned_staff_id
+          ? usersMap[conversation.assigned_staff_id] : null;
+        return {
+          id: conversation.id,
+          concern_id: concern.id,
+          subject: concern.subject,
+          student_name: student ? student.full_name : null,
+          assigned_staff_name: assignedStaff ? assignedStaff.full_name : null,
+          started_at: conversation.started_at,
+          ended_at: conversation.ended_at,
+        };
+      })
+      .sort((a, b) => (b.started_at || '').localeCompare(a.started_at || ''));
+    return { conversations: rows };
+  }
+
+  if (action === 'conversation_export') {
+    if (user.role !== 'staff') throw new Error('Forbidden');
+    const conversationId = params.get('id');
+    const conversation = check(await sb.from('concern_conversations')
+      .select('*').eq('id', conversationId).maybeSingle());
+    if (!conversation) throw new Error('Conversation not found');
+    const concern = check(await sb.from('concerns')
+      .select('*').eq('id', conversation.concern_id).maybeSingle());
+    if (!concern) throw new Error('Concern not found');
+
+    const student = usersMap[concern.student_id];
+    const staff = conversation.assigned_staff_id ? usersMap[conversation.assigned_staff_id] : null;
+    const history = await fetchAllRows(() => sb.from('concern_conversations')
+      .select('*').eq('concern_id', concern.id));
+    history.sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''));
+    const assignmentHistory = history.map((entry) => {
+      const assignedStaff = entry.assigned_staff_id ? usersMap[entry.assigned_staff_id] : null;
+      return {
+        staff_name: assignedStaff ? assignedStaff.full_name : null,
+        assigned_at: entry.assigned_at,
+        ended_at: entry.ended_at,
+      };
+    });
+    const msgRows = await fetchAllRows(() => sb.from('messages').select('*').eq('conversation_id', conversation.id));
+    msgRows.sort((a, b) => (a.sent_at || '').localeCompare(b.sent_at || ''));
+    const messages = msgRows.map((message) => {
+      const sender = usersMap[message.sender_id];
+      return {
+        ...message,
+        sender_name: sender ? sender.full_name : null,
+        sender_role: sender ? sender.role : null,
+      };
+    });
+    return {
+      concern: {
+        ...concern,
+        student_name: student ? student.full_name : null,
+        student_no: student ? student.user_id_no : null,
+        student_course: student ? student.course : null,
+        conversation_id: conversation.id,
+        conversation_staff_name: staff ? staff.full_name : null,
+        conversation_started_at: conversation.started_at,
+        conversation_ended_at: conversation.ended_at,
+        assignment_history: assignmentHistory,
+      },
+      messages,
+    };
   }
 
   if (action === 'create') {
@@ -231,7 +315,13 @@ async function handleConcerns(action, params, body) {
       created_at: ts, updated_at: ts,
     }).select().single());
 
-    await sb.from('messages').insert({ concern_id: concern.id, sender_id: user.id, message: description, sent_at: ts });
+    const conversation = check(await sb.from('concern_conversations').insert({
+      concern_id: concern.id, assigned_staff_id: null, started_at: ts,
+    }).select().single());
+    await sb.from('messages').insert({
+      concern_id: concern.id, conversation_id: conversation.id,
+      sender_id: user.id, message: description, sent_at: ts,
+    });
 
     const staffUsers = Object.values(usersMap).filter((u) => u.role === 'staff');
     if (staffUsers.length) {
@@ -255,8 +345,14 @@ async function handleConcerns(action, params, body) {
     if (!c) throw new Error('Not found');
     if (user.role === 'student' && c.student_id !== user.id) throw new Error('Forbidden');
 
+    const conversation = check(await sb.from('concern_conversations')
+      .select('id').eq('concern_id', id).is('ended_at', null).maybeSingle());
+    if (!conversation) throw new Error('No active conversation exists for this concern');
     const ts = nowStr();
-    await sb.from('messages').insert({ concern_id: id, sender_id: user.id, message, sent_at: ts });
+    await sb.from('messages').insert({
+      concern_id: id, conversation_id: conversation.id,
+      sender_id: user.id, message, sent_at: ts,
+    });
     await sb.from('concerns').update({ updated_at: ts }).eq('id', id);
 
     const notifyUser = user.role === 'student' ? c.assigned_to : c.student_id;
@@ -278,10 +374,25 @@ async function handleConcerns(action, params, body) {
 
     const updates = { updated_at: nowStr() };
     if (body.status !== undefined) updates.status = body.status;
-    if (body.assign_to_me) updates.assigned_to = user.id;
-    if (Object.keys(updates).length <= 1) throw new Error('Nothing to update');
+    const assignedStaffId = body.assign_to_me ? user.id : body.assigned_to;
+    let assignmentResult = null;
+    if (assignedStaffId) {
+      assignmentResult = check(await sb.rpc('reassign_concern', {
+        p_concern_id: id,
+        p_staff_id: assignedStaffId,
+      }));
+      await auditLog('concern_assigned', 'concern', id, {
+        assigned_to: assignedStaffId,
+        conversation_id: assignmentResult.conversation_id,
+        conversation_restarted: assignmentResult.conversation_restarted,
+      });
+    }
+    if (Object.keys(updates).length <= 1) {
+      if (assignmentResult) return { ok: true, ...assignmentResult };
+      throw new Error('Nothing to update');
+    }
     if (updates.status === 'Resolved' && !c.resolved_at) updates.resolved_at = nowStr();
-    await sb.from('concerns').update(updates).eq('id', id);
+    check(await sb.from('concerns').update(updates).eq('id', id));
     await auditLog('concern_updated', 'concern', id, updates);
 
     await sb.from('notifications').insert({
@@ -289,7 +400,7 @@ async function handleConcerns(action, params, body) {
       body: `Your concern "${c.subject}" was updated.`,
       is_read: false, created_at: nowStr(), event_type: 'concern_status_changed',
     });
-    return { ok: true };
+    return { ok: true, ...(assignmentResult || {}) };
   }
 
   throw new Error('Unknown action');
@@ -324,7 +435,7 @@ async function handleAppointments(action, params, body) {
 
   if (action === 'staff_list') {
     const staff = Object.values(usersMap)
-      .filter((u) => u.role === 'staff')
+      .filter((u) => u.role === 'staff' && u.is_active !== false)
       .map((u) => ({ id: u.id, full_name: u.full_name, position: u.position }))
       .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
     return { staff };
@@ -1101,6 +1212,7 @@ async function performLogout() {
 function subscribeToConcernMessages(concernId, onChange) {
   const channel = sb.channel(`concern-${concernId}-messages`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `concern_id=eq.${concernId}` }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'concern_conversations', filter: `concern_id=eq.${concernId}` }, onChange)
     .subscribe();
   return channel;
 }
@@ -1109,11 +1221,11 @@ function unsubscribeChannel(channel) {
   if (channel) sb.removeChannel(channel);
 }
 
-async function markMessagesRead(concernId, currentUserId) {
+async function markMessagesRead(conversationId, currentUserId) {
   try {
     await sb.from('messages')
       .update({ read_at: nowStr() })
-      .eq('concern_id', concernId)
+      .eq('conversation_id', conversationId)
       .is('read_at', null)
       .neq('sender_id', currentUserId);
   } catch { /* best-effort */ }

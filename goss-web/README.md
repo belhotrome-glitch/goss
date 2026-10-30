@@ -34,13 +34,11 @@ the full list.
 - Added `audit_logs`, `announcements`, `feedback` tables with their own RLS.
 - Added indexes on every column used in a filter/join (`student_id`,
   `staff_id`, `assigned_to`, `status`, `appt_date`, etc.).
-- **Tightened `messages` RLS** — this was the biggest confidentiality gap in
-  the original policy. Previously *any* staff account could read *any*
-  concern's message thread. Now `can_access_case()` restricts message reads
-  to: the student who owns the concern, staff while the concern is still
-  unassigned (open for triage), the specific staff member it's assigned to,
-  or an admin. Concern *metadata* (subject/status/category) is still visible
-  to all staff so they can triage and claim cases.
+- **Scoped `messages` RLS** — students can read their own concern threads;
+  staff can read and reply in any concern thread, including cases assigned
+  to another staff member. Each message stores the authenticated sender ID
+  and the UI displays that sender's name. Concern metadata remains visible to
+  staff for triage and assignment.
 - Enabled Supabase Realtime on `messages`, `notifications`, `concerns` — RLS
   applies to realtime subscriptions exactly as it does to normal queries, so
   a student cannot subscribe to another student's thread.
@@ -51,10 +49,13 @@ the full list.
   refresh, and unsubscribe cleanly on page unload.
 - Read receipts: `read_at` is stamped when the other party opens the thread
   (`markMessagesRead`).
-- Staff now explicitly **claim** an unassigned case (a button on the concern
-  detail page) — once claimed, only that counselor (and admins) can read the
-  thread going forward, matching the "assigned counselor" confidentiality
-  model instead of an open free-for-all.
+- Staff can explicitly **claim** an unassigned case from the concern detail
+  page. Assignment identifies the responsible counselor, while other staff
+  can still view and reply in the conversation.
+- Reassigning an already assigned concern starts a new conversation for the
+  student and replacement counselor. Previous conversations are archived,
+  remain readable by staff, and can be downloaded individually from staff
+  reports along with assignment history.
 
 ### Admin Dashboard (new)
 - `admin-dashboard.html` — overview stats + recent activity feed.
@@ -85,8 +86,8 @@ the full list.
   entering both dates and selecting Generate Report. Staff can also select
   one accessible student concern to download its case details and complete
   chat transcript as a separate DOCX;
-  conversation access remains limited to unassigned cases and cases assigned
-  to that staff member.
+  conversation access includes assigned cases, and each reply is attributed
+  to the staff member who sent it.
 - `admin-audit-logs.html` — latest 200 audit events (who did what, to which
   record, when — never message content, passwords, or tokens).
 
@@ -112,10 +113,9 @@ the full list.
 - **Student**: sees only their own concerns, messages, appointments,
   notifications, and feedback. Enforced by RLS `student_id = auth.uid()` /
   `can_access_case()` — not by hiding buttons.
-- **Staff**: sees all concern *metadata* to triage; can only read/send
-  **messages** for cases that are unassigned or assigned to them; can update
-  any concern's status; sees only their own appointments (not other
-  counselors').
+- **Staff**: sees all concern metadata and can read/reply to all concern
+  messages; each message is attributed to its sender. Staff can update any
+  concern's status and sees only their own appointments (not other counselors').
 - **Admin**: full read/update on `users`; concern/appointment *metadata*
   visibility for management, but the same message-content restriction as
   staff applies (`can_access_case()` grants admins full access — this is an
@@ -131,6 +131,11 @@ the full list.
 ### 2. Run the schema
 SQL Editor → paste `supabase/schema.sql` → Run. Safe to re-run on a database
 that already has the v1 schema — it upgrades in place.
+
+For an existing project that already ran the previous schema, run
+`supabase/reassignment_chat_history.sql` in the SQL Editor to add separate
+chat archives for reassigned concerns. Existing messages are preserved as
+the initial conversation.
 
 If booking fails with `new row for relation "appointments" violates check
 constraint "appointments_status_check"`, the database has an outdated status
