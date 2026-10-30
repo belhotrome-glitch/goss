@@ -32,6 +32,7 @@
     { label: 'In Progress', value: byStatus['In Progress'] || 0, color: 'var(--in-progress)', icon: '🔄' },
     { label: 'Resolved', value: byStatus['Resolved'] || 0, color: 'var(--resolved)', icon: '✅' },
     { label: 'Upcoming Appointments', value: stats.upcoming_appointments, color: 'var(--primary-teal)', icon: '📅' },
+    { label: 'Pending Appointment Requests', value: stats.pending_appointment_requests || 0, color: 'var(--pending)', icon: '⏳' },
   ].map(s => `
     <div class="card stat-card">
       <div class="icon" style="background:${s.color}1A;color:${s.color}">${s.icon}</div>
@@ -56,7 +57,7 @@
     <div class="list-item">
       <div class="list-item-main">
         <div class="list-item-title">${esc(a.staff_name)}</div>
-        <div class="list-item-sub">${fmtDate(a.appt_date)} at ${esc(a.appt_time)} · ${esc(a.type)}</div>
+        <div class="list-item-sub">${fmtDate(a.appt_date)} at ${esc(a.appt_time)} · ${esc(a.type)}${a.status === 'Pending' ? ' · Waiting for counselor approval' : ''}</div>
       </div>
       <span class="badge ${badgeClass(a.status)}">${a.status}</span>
     </div>`).join('') || '<div class="empty-state">No upcoming appointments</div>';

@@ -715,11 +715,15 @@ async function handleDashboard(action) {
 
       const appts = check(await sb.from('appointments').select('*').eq('student_id', user.id));
       const today = todayStr();
+      const byAppointmentDate = (a, b) => String(a.appt_date).localeCompare(String(b.appt_date)) ||
+        String(a.appt_time).localeCompare(String(b.appt_time));
+      const pendingRequests = appts
+        .filter((a) => String(a.status).trim().toLowerCase() === 'pending')
+        .sort(byAppointmentDate);
       const upcoming = appts
-        .filter((a) => ['Pending', 'Scheduled'].includes(a.status) && a.appt_date >= today)
-        .sort((a, b) => a.appt_date.localeCompare(b.appt_date) ||
-          String(a.appt_time).localeCompare(String(b.appt_time)));
-      const nextAppointments = upcoming.slice(0, 3).map((a) => ({
+        .filter((a) => String(a.status).trim().toLowerCase() === 'scheduled' && a.appt_date >= today)
+        .sort(byAppointmentDate);
+      const nextAppointments = [...pendingRequests, ...upcoming.slice(0, 3)].map((a) => ({
         ...a, staff_name: usersMap[a.staff_id] ? usersMap[a.staff_id].full_name : null,
       }));
 
@@ -733,6 +737,7 @@ async function handleDashboard(action) {
       return {
         concerns_by_status: byStatus,
         upcoming_appointments: upcoming.length,
+        pending_appointment_requests: pendingRequests.length,
         next_appointments: nextAppointments,
         recent_concerns: recentConcerns,
       };
@@ -745,11 +750,15 @@ async function handleDashboard(action) {
 
     const appts = check(await sb.from('appointments').select('*').eq('staff_id', user.id));
     const today = todayStr();
+    const byAppointmentDate = (a, b) => String(a.appt_date).localeCompare(String(b.appt_date)) ||
+      String(a.appt_time).localeCompare(String(b.appt_time));
+    const pendingRequests = appts
+      .filter((a) => String(a.status).trim().toLowerCase() === 'pending')
+      .sort(byAppointmentDate);
     const upcoming = appts
-      .filter((a) => ['Pending', 'Scheduled'].includes(a.status) && a.appt_date >= today)
-      .sort((a, b) => a.appt_date.localeCompare(b.appt_date) ||
-        String(a.appt_time).localeCompare(String(b.appt_time)));
-    const pendingAppointments = appts.filter((a) => a.status === 'Pending').length;
+      .filter((a) => String(a.status).trim().toLowerCase() === 'scheduled' && a.appt_date >= today)
+      .sort(byAppointmentDate);
+    const pendingAppointments = pendingRequests.length;
 
     const recent = concerns
       .filter((c) => !['Resolved', 'Closed'].includes(c.status))
@@ -763,7 +772,7 @@ async function handleDashboard(action) {
         student_name: usersMap[c.student_id] ? usersMap[c.student_id].full_name : null,
       }));
 
-    const nextAppointments = upcoming.slice(0, 5).map((a) => ({
+    const nextAppointments = [...pendingRequests, ...upcoming.slice(0, 5)].map((a) => ({
       ...a, student_name: usersMap[a.student_id] ? usersMap[a.student_id].full_name : null,
     }));
 

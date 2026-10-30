@@ -56,7 +56,7 @@
     <div class="list-item">
       <div class="list-item-main">
         <div class="list-item-title">${esc(a.student_name)}</div>
-        <div class="list-item-sub">${fmtDate(a.appt_date)} at ${esc(a.appt_time)} · ${esc(a.type)}</div>
+        <div class="list-item-sub">${fmtDate(a.appt_date)} at ${esc(a.appt_time)} · ${esc(a.type)}${a.status === 'Pending' ? ' · Awaiting your response' : ''}</div>
       </div>
       <span class="badge ${badgeClass(a.status)}">${a.status}</span>
     </div>`).join('') || '<div class="empty-state">No upcoming appointments</div>';
