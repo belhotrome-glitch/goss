@@ -22,12 +22,12 @@ let chatChannel = null;
 
 async function loadDetail() {
   const { concern, messages } = await api('/api/concerns.php?action=detail&id=' + concernId);
-  markMessagesRead(concernId, CURRENT_USER.id);
+  markMessagesRead(concern.conversation_id, CURRENT_USER.id);
   const thread = messages.map(m => `
     <div class="msg ${m.sender_id == CURRENT_USER.id ? 'mine' : 'theirs'}">
       <div>${esc(m.message)}</div>
       <div class="msg-meta">${esc(m.sender_name || (m.sender_role === 'staff'
-        ? concern.staff_name || 'Guidance Staff'
+        ? concern.conversation_staff_name || concern.staff_name || 'Guidance Staff'
         : m.sender_id == CURRENT_USER.id ? CURRENT_USER.full_name : 'Guidance Staff'))} · ${fmtDateTime(m.sent_at)}</div>
     </div>
   `).join('');
@@ -41,6 +41,7 @@ async function loadDetail() {
         </div>
         <span class="badge ${badgeClass(concern.status)}">${concern.status}</span>
       </div>
+      <div class="list-item-sub" style="white-space:pre-wrap;margin-bottom:14px">${esc(concern.description)}</div>
       <div class="list-item-meta" style="margin-bottom:14px">
         ${concern.is_urgent ? '<span class="badge badge-urgent">Urgent</span>' : ''}
         <span class="chip">${concern.staff_name ? 'Assigned to ' + esc(concern.staff_name) : 'Unassigned'}</span>

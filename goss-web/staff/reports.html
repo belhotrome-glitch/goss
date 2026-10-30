@@ -228,31 +228,31 @@ async function generateReport() {
   }
 }
 
-async function loadConversationOptions(user) {
+async function loadConversationOptions() {
   const select = document.getElementById('conversation-case');
   const error = document.getElementById('conversation-error');
   try {
-    const { concerns } = await api('/api/concerns.php?action=list');
-    const accessibleCases = concerns.filter(concern =>
-      !concern.assigned_to || concern.assigned_to === user.id);
-    select.innerHTML = accessibleCases.length
-      ? '<option value="">Select a student concern</option>' + accessibleCases.map(concern => `
-        <option value="${esc(concern.id)}">
-          ${esc(concern.student_name || 'Student')} — ${esc(concern.subject)} (${esc(concern.status)})
+    const { conversations } = await api('/api/concerns.php?action=conversation_list');
+    select.innerHTML = conversations.length
+      ? '<option value="">Select a conversation</option>' + conversations.map(conversation => `
+        <option value="${esc(conversation.id)}">
+          ${esc(conversation.student_name || 'Student')} — ${esc(conversation.subject)}
+          · ${esc(conversation.assigned_staff_name || 'Unassigned')}
+          · ${conversation.ended_at ? 'Previous' : 'Current'} chat · ${fmtDate(conversation.started_at)}
         </option>
       `).join('')
-      : '<option value="">No accessible student concerns</option>';
+      : '<option value="">No student conversations available</option>';
     select.value = '';
   } catch (err) {
-    select.innerHTML = '<option value="">Could not load student concerns</option>';
-    error.textContent = err.message || 'Could not load student concerns.';
+    select.innerHTML = '<option value="">Could not load conversations</option>';
+    error.textContent = err.message || 'Could not load conversations.';
     error.classList.remove('hidden');
   }
 }
 
 async function downloadConversation() {
-  const concernId = document.getElementById('conversation-case').value;
-  if (!concernId) return;
+  const conversationId = document.getElementById('conversation-case').value;
+  if (!conversationId) return;
   const button = document.getElementById('download-conversation');
   const error = document.getElementById('conversation-error');
   button.disabled = true;
@@ -260,10 +260,7 @@ async function downloadConversation() {
   error.classList.add('hidden');
   try {
     if (!window.docx) throw new Error('Word export library did not load. Check your internet connection and try again.');
-    const { concern, messages } = await api('/api/concerns.php?action=detail&id=' + encodeURIComponent(concernId));
-    if (concern.assigned_to && concern.assigned_to !== CURRENT_USER.id) {
-      throw new Error('This case is no longer available to your account.');
-    }
+    const { concern, messages } = await api('/api/concerns.php?action=conversation_export&id=' + encodeURIComponent(conversationId));
 
     const logoResponse = await fetch('../assets/img/logo.png');
     if (!logoResponse.ok) throw new Error('Could not load the college logo for the Word report.');
@@ -298,8 +295,15 @@ async function downloadConversation() {
       ['Category', concern.category || 'Not specified'],
       ['Status', concern.status || 'Not specified'],
       ['Priority', concern.is_urgent ? 'Urgent' : 'Not urgent'],
-      ['Assigned staff', concern.staff_name || 'Unassigned'],
+      ['Staff assigned to this conversation', concern.conversation_staff_name || 'Unassigned'],
+      ['Assignment history', (concern.assignment_history || [])
+        .filter(assignment => assignment.staff_name)
+        .map(assignment =>
+          `${assignment.staff_name} (assigned ${assignment.assigned_at ? fmtDateTime(assignment.assigned_at) : 'time unavailable'}${assignment.ended_at ? `; reassigned ${fmtDateTime(assignment.ended_at)}` : '; current assignment'})`
+        ).join('; ') || 'No assignment history'],
       ['Submitted', concern.created_at ? fmtDateTime(concern.created_at) : 'Not available'],
+      ['Conversation started', concern.conversation_started_at ? fmtDateTime(concern.conversation_started_at) : 'Not available'],
+      ['Conversation ended', concern.conversation_ended_at ? fmtDateTime(concern.conversation_ended_at) : 'Current conversation'],
     ];
     details.forEach(([label, value]) => children.push(new docx.Paragraph({
       children: [
@@ -329,7 +333,7 @@ async function downloadConversation() {
     } else {
       messages.forEach(message => {
         const senderName = message.sender_name
-          || (message.sender_role === 'staff' ? concern.staff_name : concern.student_name)
+          || (message.sender_role === 'staff' ? concern.conversation_staff_name : concern.student_name)
           || (message.sender_role === 'staff' ? 'Staff' : 'Student');
         const role = message.sender_role === 'staff' ? 'Staff' : 'Student';
         children.push(new docx.Paragraph({
@@ -371,7 +375,7 @@ async function downloadConversation() {
     const safeStudentId = String(concern.student_no || concern.student_id || 'student')
       .replace(/[^a-zA-Z0-9_-]/g, '-');
     link.href = url;
-    link.download = `GOSS-Conversation-${safeStudentId}-${new Date().toISOString().slice(0, 10)}.docx`;
+    link.download = `GOSS-Conversation-${safeStudentId}-${String(conversationId).slice(0, 8)}-${new Date().toISOString().slice(0, 10)}.docx`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (err) {
@@ -569,12 +573,12 @@ async function downloadReport() {
     </div>
     <div class="card staff-conversation-export" style="margin-bottom:20px">
       <div class="section-title">Download a Student Conversation</div>
-      <p class="list-item-sub">Choose one student concern to download its case details and complete chat transcript. Only unassigned cases and cases assigned to you are available. Keep downloaded transcripts confidential.</p>
+      <p class="list-item-sub">Choose a current or previous student conversation to download its case details, assigned-staff history, and complete chat transcript. Keep downloaded transcripts confidential.</p>
       <div class="staff-report-controls" style="margin:12px 0 0">
         <div class="field" style="margin:0;min-width:min(100%,360px)">
-          <label for="conversation-case">Student concern</label>
+          <label for="conversation-case">Student conversation</label>
           <select id="conversation-case">
-            <option value="">Loading accessible cases...</option>
+            <option value="">Loading conversations...</option>
           </select>
         </div>
         <button class="btn btn-outline" id="download-conversation" type="button" disabled>Download Conversation DOCX</button>
@@ -611,7 +615,7 @@ async function downloadReport() {
   });
   document.getElementById('download-conversation').addEventListener('click', downloadConversation);
   updatePeriodControls();
-  await Promise.all([generateReport(), loadConversationOptions(user)]);
+  await Promise.all([generateReport(), loadConversationOptions()]);
 })();
 </script>
 </body>

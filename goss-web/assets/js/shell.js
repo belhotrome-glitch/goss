@@ -57,7 +57,9 @@ function renderShell(user, activeKey, pageTitle) {
           <h1>GOSS</h1>
           <div class="brand-user">
             <div class="name">${esc(user.full_name)}</div>
-            <div class="role">${esc(roleLabel)}</div>
+            ${user.role === 'student'
+              ? `<div class="role">Course: ${esc(user.course || 'Not set')} · ID: ${esc(user.user_id_no || 'Not set')}</div>`
+              : `<div class="role">${esc(roleLabel)}</div>`}
           </div>
         </div>
       </div>

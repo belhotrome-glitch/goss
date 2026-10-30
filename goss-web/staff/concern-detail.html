@@ -19,6 +19,7 @@ const params = new URLSearchParams(location.search);
 const concernId = params.get('id');
 let CURRENT_USER = null;
 let chatChannel = null;
+let STAFF_MEMBERS = [];
 const STATUSES = ['Pending', 'In Progress', 'Resolved', 'Closed'];
 
 async function setStatus(status) {
@@ -33,13 +34,26 @@ async function claimCase() {
   await loadDetail();
 }
 
+async function assignStaff() {
+  const staffId = document.getElementById('assigned-staff').value;
+  if (!staffId) return;
+  const result = await api('/api/concerns.php?action=update', {
+    method: 'POST',
+    body: { id: concernId, assigned_to: staffId },
+  });
+  toast(result.conversation_restarted
+    ? 'Concern reassigned. A new student chat has been started.'
+    : 'Concern assigned.');
+  await loadDetail();
+}
+
 async function loadDetail() {
   const { concern, messages } = await api('/api/concerns.php?action=detail&id=' + concernId);
-  markMessagesRead(concernId, CURRENT_USER.id);
+  markMessagesRead(concern.conversation_id, CURRENT_USER.id);
   const thread = messages.map(m => `
     <div class="msg ${m.sender_id == CURRENT_USER.id ? 'mine' : 'theirs'}">
       <div>${esc(m.message)}</div>
-      <div class="msg-meta">${esc(m.sender_name || (m.sender_id == CURRENT_USER.id ? CURRENT_USER.full_name : 'Student'))} · ${fmtDateTime(m.sent_at)}</div>
+      <div class="msg-meta">${esc(m.sender_name || (m.sender_role === 'staff' ? 'Guidance Staff' : m.sender_id == CURRENT_USER.id ? CURRENT_USER.full_name : 'Student'))} · ${fmtDateTime(m.sent_at)}</div>
     </div>
   `).join('');
 
@@ -56,10 +70,21 @@ async function loadDetail() {
         </div>
         <span class="badge ${badgeClass(concern.status)}">${concern.status}</span>
       </div>
+      <div class="list-item-sub" style="white-space:pre-wrap;margin-bottom:14px">${esc(concern.description)}</div>
       <div class="list-item-meta" style="margin-bottom:14px">
         ${concern.is_urgent ? '<span class="badge badge-urgent">Urgent</span>' : ''}
         <span class="chip">${concern.staff_name ? 'Assigned to ' + esc(concern.staff_name) : 'Unassigned'}</span>
         ${!concern.assigned_to ? '<button class="btn btn-sm" style="margin-left:8px" onclick="claimCase()">Claim this case</button>' : ''}
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="field" style="margin:0;min-width:220px">
+          <label for="assigned-staff">Assign or reassign counselor</label>
+          <select id="assigned-staff">
+            <option value="">Select a staff member</option>
+            ${STAFF_MEMBERS.map(staff => `<option value="${esc(staff.id)}" ${staff.id === concern.assigned_to ? 'selected' : ''}>${esc(staff.full_name)}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" id="assign-staff-button" onclick="assignStaff()">Assign / Reassign</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">${statusButtons}</div>
       <div style="font-size:13px;font-weight:600;margin-bottom:8px">Conversation with ${esc(concern.student_name || 'Student')}</div>
@@ -78,6 +103,12 @@ async function loadDetail() {
     await api('/api/concerns.php?action=reply', { method: 'POST', body: { concern_id: concernId, message: text } });
     await loadDetail();
   });
+  document.getElementById('assigned-staff').addEventListener('change', (event) => {
+    document.getElementById('assign-staff-button').disabled = event.target.value === concern.assigned_to;
+  });
+  document.getElementById('assign-staff-button').disabled =
+    !STAFF_MEMBERS.length || !document.getElementById('assigned-staff').value ||
+    document.getElementById('assigned-staff').value === concern.assigned_to;
 }
 
 (async () => {
@@ -86,6 +117,8 @@ async function loadDetail() {
   if (user.role !== 'staff') { location.href = '../student/dashboard.html'; return; }
   CURRENT_USER = user;
   renderShell(user, 'concerns', 'Concern Details');
+  const { staff } = await api('/api/appointments.php?action=staff_list');
+  STAFF_MEMBERS = staff;
 
   document.getElementById('page-content').innerHTML = `
     <a href="concerns.html" style="font-size:13px;color:var(--primary-teal);font-weight:600">← Back</a>
