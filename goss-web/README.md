@@ -64,15 +64,36 @@ the full list.
   assignment) — deliberately does **not** expose message content, per least
   privilege.
 - `admin-appointments.html` — all appointments, filterable table.
-- `admin/reports.html` — date-filterable aggregate reports for student
-  concerns, case statuses, message counts by sender role/month, and
-  appointments by status/month and counselor workload. CSV export includes
-  aggregate counts only; message content and individual case details are
-  never included.
+- `admin/reports.html` — daily, weekly, monthly, semester, and custom-date
+  aggregate reports with an executive summary, period-appropriate activity
+  timeline (hourly for a day, daily for a week/month, monthly for longer
+  ranges), and concern, message, and appointment breakdowns. Concerns are
+  grouped by submission date, messages by sent date, and appointments by
+  scheduled date; case status reflects the current status for concerns
+  submitted in the period. Semester boundaries follow the school's academic
+  calendar and are entered when generating the report. The formatted Word
+  download contains the generated report's summary, activity timeline (with
+  chart series represented as exact counts), breakdowns, period, and
+  timestamp. Print Report and the dashboard's print shortcut open an in-app
+  preview before the browser print dialog. Message content and individual case
+  details are never included in the exported report.
+- `staff/reports.html` — generate an all-records aggregate report with
+  concern, appointment, student, category, status, and monthly totals. Staff
+  can generate daily, weekly, monthly, first-semester, second-semester, or
+  custom-date reports and download the report as a formatted Word document or
+  preview it in-app before printing. Semester and custom reports require
+  entering both dates and selecting Generate Report. Staff can also select
+  one accessible student concern to download its case details and complete
+  chat transcript as a separate DOCX;
+  conversation access remains limited to unassigned cases and cases assigned
+  to that staff member.
 - `admin-audit-logs.html` — latest 200 audit events (who did what, to which
   record, when — never message content, passwords, or tokens).
 
 ### Other additions
+- The shared authenticated navigation adapts to narrow screens: the hamburger
+  remains available to open or close the sidebar, with backdrop, Escape-key,
+  and automatic desktop-resize handling.
 - `audit_logs` — write-only from the client (insert for your own user id
   only), admin-only read. Logged: login, logout, password change, concern
   created/updated, appointment created/status-changed, role/active-status
@@ -83,7 +104,7 @@ the full list.
   (enforced in RLS via a subquery, not just the UI).
 - `guidance-resources.html` — static academic/career/wellbeing/emergency
   resources page, linked from the student nav.
-- Admin login is hidden from the public site: it lives at `/admindashboard/` (type `/admindashboard` after the site URL). There is no link to it anywhere.
+- Admin login tab added to `index.html` alongside Student/Staff.
 - `supabase/bootstrap.sql` — template for creating your first admin account
   directly in Supabase (no credentials shipped in this repo — see Setup).
 
@@ -221,8 +242,7 @@ staff accounts.
 Pages are now organized into per-role folders rather than flat
 `role-page.html` filenames:
 ```
-/index.html                    Landing page (Student / Staff login links only)
-/admindashboard/               Admin login (reachable only by typing the URL)
+/index.html                    Sign-in (Student / Staff / Admin tabs)
 /student/                      Student portal
   dashboard.html, concerns.html, concern-detail.html,
   submit.html, appointments.html

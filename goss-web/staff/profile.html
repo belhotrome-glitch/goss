@@ -22,45 +22,28 @@
   renderShell(user, 'profile', 'My Profile');
 
   document.getElementById('page-content').innerHTML = `
-    <div class="grid grid-2">
-      <div class="card">
-        <div class="section-title">Profile Details</div>
-        <div id="profile-error" class="error-box hidden"></div>
-        <form id="profile-form">
-          <div class="field">
-            <label for="full_name">Full Name</label>
-            <input type="text" id="full_name" value="${esc(user.full_name)}" required>
-          </div>
-          <div class="field">
-            <label>Email</label>
-            <input type="text" value="${esc(user.email)}" disabled>
-          </div>
-          <div class="field">
-            <label>Staff ID</label>
-            <input type="text" value="${esc(user.user_id_no || '')}" disabled>
-          </div>
-          <div class="field">
-            <label for="position">Position</label>
-            <input type="text" id="position" value="${esc(user.position || '')}">
-          </div>
-          <button type="submit" class="btn">Save Changes</button>
-        </form>
-      </div>
-      <div class="card">
-        <div class="section-title">Change Password</div>
-        <div id="pw-error" class="error-box hidden"></div>
-        <form id="pw-form">
-          <div class="field">
-            <label for="current_password">Current Password</label>
-            <input type="password" id="current_password" required>
-          </div>
-          <div class="field">
-            <label for="new_password">New Password</label>
-            <input type="password" id="new_password" minlength="6" required>
-          </div>
-          <button type="submit" class="btn btn-outline">Update Password</button>
-        </form>
-      </div>
+    <div class="card" style="max-width:640px">
+      <div class="section-title">Profile Details</div>
+      <div id="profile-error" class="error-box hidden"></div>
+      <form id="profile-form">
+        <div class="field">
+          <label for="full_name">Full Name</label>
+          <input type="text" id="full_name" value="${esc(user.full_name)}" required>
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="text" value="${esc(user.email)}" disabled>
+        </div>
+        <div class="field">
+          <label>Staff ID</label>
+          <input type="text" value="${esc(user.user_id_no || '')}" disabled>
+        </div>
+        <div class="field">
+          <label for="position">Position</label>
+          <input type="text" id="position" value="${esc(user.position || '')}">
+        </div>
+        <button type="submit" class="btn">Save Changes</button>
+      </form>
     </div>
   `;
 
@@ -74,26 +57,6 @@
         body: { full_name: document.getElementById('full_name').value.trim(), position: document.getElementById('position').value.trim() }
       });
       toast('Profile updated');
-    } catch (err) {
-      errBox.textContent = err.message;
-      errBox.classList.remove('hidden');
-    }
-  });
-
-  document.getElementById('pw-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const errBox = document.getElementById('pw-error');
-    errBox.classList.add('hidden');
-    try {
-      await api('/api/profile.php?action=change_password', {
-        method: 'POST',
-        body: {
-          current_password: document.getElementById('current_password').value,
-          new_password: document.getElementById('new_password').value,
-        }
-      });
-      toast('Password updated');
-      e.target.reset();
     } catch (err) {
       errBox.textContent = err.message;
       errBox.classList.remove('hidden');

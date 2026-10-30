@@ -6,6 +6,42 @@
 <title>Reports — GOSS Staff</title>
 <link rel="icon" type="image/png" href="../assets/img/logo.png">
 <link rel="stylesheet" href="../assets/css/style.css">
+<style>
+.staff-report { max-width: 1100px; margin: 0 auto; }
+.staff-report-heading { display: flex; align-items: center; gap: 16px; padding-bottom: 18px; border-bottom: 2px solid var(--primary-teal); margin-bottom: 18px; }
+.staff-report-heading img { width: 64px; height: 64px; object-fit: contain; }
+.staff-report-heading h1 { margin: 0 0 4px; font-size: 24px; }
+.staff-report-heading p { margin: 2px 0; color: var(--text-secondary); font-size: 13px; }
+.staff-report-meta { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 22px; font-size: 13px; }
+.staff-report-section { margin: 0 0 22px; }
+.staff-report-section h2 { font-size: 17px; margin: 0 0 8px; }
+.staff-report-section table { width: 100%; background: #fff; border: 1px solid var(--border); border-collapse: collapse; }
+.staff-report-section th { background: var(--primary-teal-light); color: var(--text-primary); }
+.staff-report-section td:last-child, .staff-report-section th:last-child { width: 140px; text-align: right; }
+.staff-report-section td, .staff-report-section th { padding: 9px 10px; border-bottom: 1px solid var(--border); }
+.staff-report-section tfoot td { font-weight: 700; border-top: 2px solid var(--border); }
+.staff-report-controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+.staff-period-controls { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.staff-period-controls .field { margin: 0; }
+.staff-period-range { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.print-preview-dialog { max-width: 1040px; width: 100%; max-height: 92vh; display: flex; flex-direction: column; padding: 0; }
+.print-preview-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--border); }
+.print-preview-header h2 { margin: 0 0 4px; font-size: 18px; }
+.print-preview-header p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+.print-preview-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.print-preview-content { overflow: auto; padding: 24px; background: #edf1ed; }
+.print-preview-content .staff-report { max-width: 900px; min-height: 900px; margin: 0 auto; padding: 40px; background: #fff; box-shadow: 0 2px 12px rgba(17, 24, 39, .16); }
+@media print {
+  @page { size: A4 portrait; margin: 14mm; }
+  .sidebar, .topbar, .staff-report-controls, .staff-conversation-export, .print-preview-overlay { display: none !important; }
+  body, .app-shell, .main, .content { display: block; min-height: 0; overflow: visible; background: #fff; }
+  .content { padding: 0; }
+  .staff-report { max-width: none; }
+  .staff-report-section table { font-size: 10pt; }
+  .staff-report-section th, .staff-report-section td { padding: 6px 8px; }
+  .staff-report-section thead { display: table-header-group; }
+}
+</style>
 </head>
 <body>
 <div class="app-shell" id="shell"></div>
@@ -14,59 +50,568 @@
 <script src="../assets/js/supabase-config.js"></script>
 <script src="../assets/js/app.js"></script>
 <script src="../assets/js/shell.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script>
-function barChart(rows, labelKey, valueKey) {
-  const max = Math.max(1, ...rows.map(r => Number(r[valueKey])));
-  return rows.map(r => `
-    <div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
-        <span>${esc(r[labelKey])}</span><span style="font-weight:600">${r[valueKey]}</span>
+let currentReport = null;
+let generatedAt = '';
+let CURRENT_USER = null;
+
+function dateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatReportDate(value, options = { month: 'long', day: 'numeric', year: 'numeric' }) {
+  return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, options);
+}
+
+function getReportPeriod() {
+  const type = document.getElementById('period-type').value;
+  const periodDate = document.getElementById('period-date').value;
+  const periodMonth = document.getElementById('period-month').value;
+  let startDate;
+  let endDate;
+  let label;
+  if (type === 'daily' || type === 'weekly') {
+    if (!periodDate) throw new Error('Choose a date for the report period.');
+    const date = new Date(`${periodDate}T12:00:00`);
+    if (type === 'daily') {
+      startDate = periodDate;
+      endDate = periodDate;
+      label = `Daily · ${formatReportDate(periodDate)}`;
+    } else {
+      const dayFromMonday = (date.getDay() + 6) % 7;
+      date.setDate(date.getDate() - dayFromMonday);
+      startDate = dateInputValue(date);
+      date.setDate(date.getDate() + 6);
+      endDate = dateInputValue(date);
+      label = `Weekly · ${formatReportDate(startDate)} to ${formatReportDate(endDate)}`;
+    }
+  } else if (type === 'monthly') {
+    if (!periodMonth) throw new Error('Choose a month for the report.');
+    const [year, month] = periodMonth.split('-').map(Number);
+    startDate = `${periodMonth}-01`;
+    endDate = dateInputValue(new Date(year, month, 0));
+    label = `Monthly · ${new Date(year, month - 1, 1, 12).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}`;
+  } else {
+    startDate = document.getElementById('start-date').value;
+    endDate = document.getElementById('end-date').value;
+    if (!startDate || !endDate) throw new Error('Choose both start and end dates.');
+    if (startDate > endDate) throw new Error('The start date must be on or before the end date.');
+    const name = type === 'semester-1' ? 'First Semester'
+      : type === 'semester-2' ? 'Second Semester' : 'Custom date range';
+    label = `${name} · ${formatReportDate(startDate)} to ${formatReportDate(endDate)}`;
+  }
+  return { type, startDate, endDate, label };
+}
+
+function updatePeriodControls() {
+  const type = document.getElementById('period-type').value;
+  const anchoredPeriod = ['daily', 'weekly'].includes(type);
+  const monthlyPeriod = type === 'monthly';
+  const rangePeriod = ['semester-1', 'semester-2', 'custom'].includes(type);
+  document.getElementById('period-date-field').classList.toggle('hidden', !anchoredPeriod);
+  document.getElementById('period-month-field').classList.toggle('hidden', !monthlyPeriod);
+  document.getElementById('period-range-fields').classList.toggle('hidden', !rangePeriod);
+  document.getElementById('period-range-title').textContent = type === 'semester-1'
+    ? 'First semester start date'
+    : type === 'semester-2' ? 'Second semester start date' : 'Start date';
+  document.getElementById('semester-help').classList.toggle('hidden', !['semester-1', 'semester-2'].includes(type));
+  document.getElementById('period-date-label').textContent = type === 'weekly' ? 'Date in week' : 'Report date';
+}
+
+function reportSection(title, firstColumn, rows, labelKey, valueKey) {
+  const total = rows.reduce((sum, row) => sum + Number(row[valueKey] || 0), 0);
+  const body = rows.length
+    ? rows.map(row => `<tr><td>${esc(row[labelKey])}</td><td>${Number(row[valueKey] || 0)}</td></tr>`).join('')
+    : '<tr><td colspan="2">No records</td></tr>';
+  return `<section class="staff-report-section">
+    <h2>${esc(title)}</h2>
+    <table>
+      <thead><tr><th scope="col">${esc(firstColumn)}</th><th scope="col">Count</th></tr></thead>
+      <tbody>${body}</tbody>
+      ${rows.length ? `<tfoot><tr><td>Total</td><td>${total}</td></tr></tfoot>` : ''}
+    </table>
+  </section>`;
+}
+
+function renderReport(data) {
+  currentReport = data;
+  generatedAt = new Date().toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' });
+  const totals = data.totals;
+  document.getElementById('download-docx').disabled = false;
+  document.getElementById('print-report').disabled = false;
+  const isDailyBreakdown = data.period.grouping === 'day';
+  const concernPeriodRows = (data.by_month || []).map(row => ({
+    ...row,
+    period_label: row.ym.length === 10
+      ? formatReportDate(row.ym)
+      : new Date(`${row.ym}-01T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+  }));
+  document.getElementById('report-results').innerHTML = `
+    <article class="staff-report">
+      <header class="staff-report-heading">
+        <img src="../assets/img/logo.png" alt="Tangub City Global College logo">
+        <div>
+          <h1>Guidance Office Report</h1>
+          <p>Tangub City Global College</p>
+          <p>Guidance Office Support System</p>
+        </div>
+      </header>
+      <div class="staff-report-meta">
+        <div><strong>Reporting period:</strong> ${esc(data.period.label)}</div>
+        <div><strong>Date range:</strong> ${esc(formatReportDate(data.period.start_date))} to ${esc(formatReportDate(data.period.end_date))}</div>
+        <div><strong>Generated:</strong> ${esc(generatedAt)}</div>
       </div>
-      <div style="background:#F3F4F6;border-radius:6px;height:10px;overflow:hidden">
-        <div style="width:${(Number(r[valueKey]) / max) * 100}%;background:var(--primary-teal);height:100%"></div>
-      </div>
-    </div>
-  `).join('');
+      <section class="staff-report-section">
+        <h2>Executive Summary</h2>
+        <table>
+          <thead><tr><th scope="col">Measure</th><th scope="col">Total</th></tr></thead>
+          <tbody>
+            <tr><td>Total concerns</td><td>${Number(totals.total_concerns || 0)}</td></tr>
+            <tr><td>Resolved concerns</td><td>${Number(totals.resolved || 0)}</td></tr>
+            <tr><td>Total appointments</td><td>${Number(totals.total_appointments || 0)}</td></tr>
+            <tr><td>Currently registered students</td><td>${Number(totals.total_students || 0)}</td></tr>
+          </tbody>
+        </table>
+      </section>
+      ${reportSection('Concerns by Category', 'Category', data.by_category || [], 'category', 'c')}
+      ${reportSection('Concerns by Case Status', 'Status', data.by_status || [], 'status', 'c')}
+      ${reportSection(isDailyBreakdown ? 'Concerns Submitted by Date' : 'Concerns Submitted per Month',
+        isDailyBreakdown ? 'Date' : 'Month', concernPeriodRows, 'period_label', 'c')}
+    </article>
+  `;
+}
+
+function closePrintPreview() {
+  document.getElementById('print-preview-overlay').classList.add('hidden');
+  document.getElementById('print-report').focus();
+}
+
+function openPrintPreview() {
+  const report = document.querySelector('.staff-report');
+  if (!report) return;
+  document.getElementById('print-preview-content').replaceChildren(report.cloneNode(true));
+  document.getElementById('print-preview-overlay').classList.remove('hidden');
+  document.getElementById('close-print-preview').focus();
+}
+
+async function generateReport() {
+  const button = document.getElementById('generate-report');
+  const error = document.getElementById('report-error');
+  button.disabled = true;
+  button.textContent = 'Generating...';
+  error.textContent = '';
+  error.classList.add('hidden');
+  currentReport = null;
+  document.getElementById('download-docx').disabled = true;
+  document.getElementById('print-report').disabled = true;
+  try {
+    const period = getReportPeriod();
+    const query = new URLSearchParams({
+      action: 'reports',
+      start_date: period.startDate,
+      end_date: period.endDate,
+      period_type: period.type,
+    });
+    const data = await api('/api/dashboard.php?' + query.toString());
+    data.period.label = period.label;
+    renderReport(data);
+  } catch (err) {
+    error.textContent = err.message || 'Could not generate the report.';
+    error.classList.remove('hidden');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Generate Report';
+  }
+}
+
+async function loadConversationOptions(user) {
+  const select = document.getElementById('conversation-case');
+  const error = document.getElementById('conversation-error');
+  try {
+    const { concerns } = await api('/api/concerns.php?action=list');
+    const accessibleCases = concerns.filter(concern =>
+      !concern.assigned_to || concern.assigned_to === user.id);
+    select.innerHTML = accessibleCases.length
+      ? '<option value="">Select a student concern</option>' + accessibleCases.map(concern => `
+        <option value="${esc(concern.id)}">
+          ${esc(concern.student_name || 'Student')} — ${esc(concern.subject)} (${esc(concern.status)})
+        </option>
+      `).join('')
+      : '<option value="">No accessible student concerns</option>';
+    select.value = '';
+  } catch (err) {
+    select.innerHTML = '<option value="">Could not load student concerns</option>';
+    error.textContent = err.message || 'Could not load student concerns.';
+    error.classList.remove('hidden');
+  }
+}
+
+async function downloadConversation() {
+  const concernId = document.getElementById('conversation-case').value;
+  if (!concernId) return;
+  const button = document.getElementById('download-conversation');
+  const error = document.getElementById('conversation-error');
+  button.disabled = true;
+  button.textContent = 'Preparing conversation...';
+  error.classList.add('hidden');
+  try {
+    if (!window.docx) throw new Error('Word export library did not load. Check your internet connection and try again.');
+    const { concern, messages } = await api('/api/concerns.php?action=detail&id=' + encodeURIComponent(concernId));
+    if (concern.assigned_to && concern.assigned_to !== CURRENT_USER.id) {
+      throw new Error('This case is no longer available to your account.');
+    }
+
+    const logoResponse = await fetch('../assets/img/logo.png');
+    if (!logoResponse.ok) throw new Error('Could not load the college logo for the Word report.');
+    const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
+    const textColor = '26332B';
+    const mutedColor = '526057';
+    const children = [
+      new docx.Paragraph({
+        children: [
+          new docx.ImageRun({ data: logoBytes, transformation: { width: 58, height: 58 } }),
+          new docx.TextRun({ text: '  Student Concern and Chat Transcript', bold: true, size: 28, color: '1E7A34' }),
+        ],
+        alignment: docx.AlignmentType.CENTER,
+        spacing: { after: 100 },
+      }),
+      new docx.Paragraph({
+        text: 'Tangub City Global College · Guidance Office Support System',
+        alignment: docx.AlignmentType.CENTER,
+        spacing: { after: 220 },
+      }),
+      new docx.Paragraph({
+        text: 'Student and Case Details',
+        heading: docx.HeadingLevel.HEADING_1,
+        spacing: { before: 160, after: 120 },
+      }),
+    ];
+    const details = [
+      ['Student', concern.student_name || 'Student'],
+      ['Student ID', concern.student_no || 'Not available'],
+      ['Course', concern.student_course || 'Not available'],
+      ['Concern', concern.subject || 'Untitled concern'],
+      ['Category', concern.category || 'Not specified'],
+      ['Status', concern.status || 'Not specified'],
+      ['Priority', concern.is_urgent ? 'Urgent' : 'Not urgent'],
+      ['Assigned staff', concern.staff_name || 'Unassigned'],
+      ['Submitted', concern.created_at ? fmtDateTime(concern.created_at) : 'Not available'],
+    ];
+    details.forEach(([label, value]) => children.push(new docx.Paragraph({
+      children: [
+        new docx.TextRun({ text: `${label}: `, bold: true, color: textColor }),
+        new docx.TextRun({ text: String(value), color: textColor }),
+      ],
+      spacing: { after: 80 },
+    })));
+    if (concern.description) {
+      children.push(new docx.Paragraph({
+        children: [
+          new docx.TextRun({ text: 'Original concern: ', bold: true, color: textColor }),
+          new docx.TextRun({ text: String(concern.description), color: textColor }),
+        ],
+        spacing: { before: 80, after: 120 },
+      }));
+    }
+    children.push(new docx.Paragraph({
+      text: 'Conversation Transcript',
+      heading: docx.HeadingLevel.HEADING_1,
+      spacing: { before: 240, after: 120 },
+    }));
+    if (!messages.length) {
+      children.push(new docx.Paragraph({
+        children: [new docx.TextRun({ text: 'No chat messages are available for this concern.', italics: true, color: mutedColor })],
+      }));
+    } else {
+      messages.forEach(message => {
+        const senderName = message.sender_name
+          || (message.sender_role === 'staff' ? concern.staff_name : concern.student_name)
+          || (message.sender_role === 'staff' ? 'Staff' : 'Student');
+        const role = message.sender_role === 'staff' ? 'Staff' : 'Student';
+        children.push(new docx.Paragraph({
+          children: [
+            new docx.TextRun({ text: `${senderName} (${role})`, bold: true, color: '1E7A34' }),
+            new docx.TextRun({ text: ` · ${message.sent_at ? fmtDateTime(message.sent_at) : 'Time unavailable'}`, color: mutedColor }),
+          ],
+          spacing: { before: 140, after: 50 },
+        }));
+        children.push(new docx.Paragraph({
+          children: [new docx.TextRun({ text: String(message.message || ''), color: textColor })],
+          spacing: { after: 100 },
+        }));
+      });
+    }
+
+    const wordDocument = new docx.Document({
+      styles: {
+        default: {
+          document: {
+            run: { font: 'Arial', size: 20, color: textColor },
+            paragraph: { spacing: { after: 100 } },
+          },
+        },
+      },
+      sections: [{
+        properties: {
+          page: {
+            size: { orientation: docx.PageOrientation.PORTRAIT },
+            margin: { top: 720, right: 720, bottom: 720, left: 720 },
+          },
+        },
+        children,
+      }],
+    });
+    const blob = await docx.Packer.toBlob(wordDocument);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeStudentId = String(concern.student_no || concern.student_id || 'student')
+      .replace(/[^a-zA-Z0-9_-]/g, '-');
+    link.href = url;
+    link.download = `GOSS-Conversation-${safeStudentId}-${new Date().toISOString().slice(0, 10)}.docx`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    error.textContent = err.message || 'Could not create the conversation document.';
+    error.classList.remove('hidden');
+  } finally {
+    button.disabled = !document.getElementById('conversation-case').value;
+    button.textContent = 'Download Conversation DOCX';
+  }
+}
+
+function wordTableFromReport(table) {
+  const rows = Array.from(table.rows).map(row => {
+    const isHeader = row.parentElement.tagName === 'THEAD';
+    const isTotal = row.parentElement.tagName === 'TFOOT';
+    return new docx.TableRow({
+      tableHeader: isHeader,
+      children: Array.from(row.cells).map(cell => new docx.TableCell({
+        children: [new docx.Paragraph({
+          alignment: cell.cellIndex === 0 ? docx.AlignmentType.LEFT : docx.AlignmentType.CENTER,
+          children: [new docx.TextRun({
+            text: cell.innerText.trim(),
+            bold: isHeader || isTotal,
+            color: isHeader ? 'FFFFFF' : '26332B',
+            size: 18,
+          })],
+        })],
+        verticalAlign: docx.VerticalAlign.CENTER,
+        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+        ...(isHeader
+          ? { shading: { fill: '1E7A34', type: docx.ShadingType.CLEAR } }
+          : isTotal
+            ? { shading: { fill: 'E3F3E5', type: docx.ShadingType.CLEAR } }
+            : {}),
+      })),
+    });
+  });
+  return new docx.Table({
+    rows,
+    width: { size: 100, type: docx.WidthType.PERCENTAGE },
+    borders: {
+      top: { style: docx.BorderStyle.SINGLE, size: 4, color: 'D5DED7' },
+      bottom: { style: docx.BorderStyle.SINGLE, size: 4, color: 'D5DED7' },
+      left: { style: docx.BorderStyle.SINGLE, size: 4, color: 'D5DED7' },
+      right: { style: docx.BorderStyle.SINGLE, size: 4, color: 'D5DED7' },
+      insideHorizontal: { style: docx.BorderStyle.SINGLE, size: 4, color: 'D5DED7' },
+      insideVertical: { style: docx.BorderStyle.SINGLE, size: 4, color: 'D5DED7' },
+    },
+  });
+}
+
+async function downloadReport() {
+  if (!currentReport) return;
+  const button = document.getElementById('download-docx');
+  const error = document.getElementById('report-error');
+  button.disabled = true;
+  button.textContent = 'Preparing Word document...';
+  error.classList.add('hidden');
+  try {
+    if (!window.docx) throw new Error('Word export library did not load. Check your internet connection and try again.');
+    const report = document.querySelector('.staff-report');
+    const logoResponse = await fetch(report.querySelector('img').src);
+    if (!logoResponse.ok) throw new Error('Could not load the college logo for the Word report.');
+    const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
+    const children = [
+      new docx.Paragraph({
+        children: [
+          new docx.ImageRun({ data: logoBytes, transformation: { width: 58, height: 58 } }),
+          new docx.TextRun({ text: '  Guidance Office Report', bold: true, size: 30, color: '1E7A34' }),
+        ],
+        alignment: docx.AlignmentType.CENTER,
+        spacing: { after: 100 },
+      }),
+      new docx.Paragraph({
+        text: 'Tangub City Global College · Guidance Office Support System',
+        alignment: docx.AlignmentType.CENTER,
+        spacing: { after: 180 },
+      }),
+    ];
+    report.querySelectorAll('.staff-report-meta > div').forEach(meta => children.push(new docx.Paragraph({
+      text: meta.innerText.trim(),
+      spacing: { after: 80 },
+    })));
+    Array.from(report.querySelectorAll('.staff-report-section')).forEach(section => {
+      children.push(new docx.Paragraph({
+        text: section.querySelector('h2').innerText.trim(),
+        heading: docx.HeadingLevel.HEADING_1,
+        spacing: { before: 240, after: 120 },
+      }));
+      children.push(wordTableFromReport(section.querySelector('table')));
+      children.push(new docx.Paragraph({ text: '', spacing: { after: 120 } }));
+    });
+    const wordDocument = new docx.Document({
+      styles: {
+        default: {
+          document: {
+            run: { font: 'Arial', size: 20, color: '26332B' },
+            paragraph: { spacing: { after: 100 } },
+          },
+        },
+      },
+      sections: [{
+        properties: {
+          page: {
+            size: { orientation: docx.PageOrientation.PORTRAIT },
+            margin: { top: 720, right: 720, bottom: 720, left: 720 },
+          },
+        },
+        children,
+      }],
+    });
+    const blob = await docx.Packer.toBlob(wordDocument);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `GOSS-Staff-Report-${currentReport.period.start_date}-to-${currentReport.period.end_date}.docx`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    error.textContent = err.message || 'Could not create the Word document.';
+    error.classList.remove('hidden');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Download DOCX';
+  }
 }
 
 (async () => {
   const user = await requireAuth();
   if (!user) return;
-  if (user.role !== 'staff') { location.href = '../student/dashboard.html'; return; }
+  if (user.role !== 'staff') {
+    location.href = user.role === 'admin' ? '../admin/dashboard.html' : '../student/dashboard.html';
+    return;
+  }
+  CURRENT_USER = user;
   renderShell(user, 'reports', 'Reports & Analytics');
-
-  const data = await api('/api/dashboard.php?action=reports');
-  const t = data.totals;
-
-  const statCards = [
-    { label: 'Total Concerns', value: t.total_concerns, icon: '💬' },
-    { label: 'Resolved', value: t.resolved, icon: '✅' },
-    { label: 'Total Appointments', value: t.total_appointments, icon: '📅' },
-    { label: 'Registered Students', value: t.total_students, icon: '🎓' },
-  ].map(s => `
-    <div class="card stat-card">
-      <div class="icon" style="background:var(--primary-teal-light);color:var(--primary-teal)">${s.icon}</div>
-      <div class="value">${s.value}</div>
-      <div class="label">${s.label}</div>
-    </div>`).join('');
-
+  const todayValue = dateInputValue(new Date());
+  const currentMonth = todayValue.slice(0, 7);
   document.getElementById('page-content').innerHTML = `
-    <div class="grid grid-4" style="margin-bottom:24px">${statCards}</div>
-    <div class="grid grid-2">
-      <div class="card">
-        <div class="section-title">Concerns by Category</div>
-        ${barChart(data.by_category, 'category', 'c')}
+    <div class="card staff-report-controls">
+      <div class="staff-period-controls">
+        <div class="field">
+          <label for="period-type">Report period</label>
+          <select id="period-type">
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly" selected>Monthly</option>
+            <option value="semester-1">First Semester</option>
+            <option value="semester-2">Second Semester</option>
+            <option value="custom">Custom date range</option>
+          </select>
+        </div>
+        <div class="field hidden" id="period-date-field">
+          <label id="period-date-label" for="period-date">Report date</label>
+          <input type="date" id="period-date" value="${todayValue}">
+        </div>
+        <div class="field" id="period-month-field">
+          <label for="period-month">Report month</label>
+          <input type="month" id="period-month" value="${currentMonth}">
+        </div>
+        <div class="staff-period-range hidden" id="period-range-fields">
+          <div class="field">
+            <label id="period-range-title" for="start-date">Start date</label>
+            <input type="date" id="start-date">
+          </div>
+          <div class="field">
+            <label for="end-date">End date</label>
+            <input type="date" id="end-date">
+          </div>
+        </div>
+        <button class="btn" id="generate-report" type="button">Generate Report</button>
       </div>
-      <div class="card">
-        <div class="section-title">Concerns by Status</div>
-        ${barChart(data.by_status, 'status', 'c')}
+      <p class="list-item-sub hidden" id="semester-help" style="margin:12px 0 0">
+        Enter the semester dates based on your school's academic calendar.
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+      <button class="btn btn-outline" id="download-docx" type="button" disabled>Download DOCX</button>
+      <button class="btn btn-outline" id="print-report" type="button" disabled>Print Report</button>
       </div>
     </div>
-    <div class="card" style="margin-top:20px">
-      <div class="section-title">Concerns Submitted per Month</div>
-      ${barChart(data.by_month, 'ym', 'c')}
+    <div class="modal-overlay hidden print-preview-overlay" id="print-preview-overlay">
+      <section class="modal print-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="print-preview-title">
+        <header class="print-preview-header">
+          <div>
+            <h2 id="print-preview-title">Print Preview</h2>
+            <p>Review the report below. This is the content that will be sent to print.</p>
+          </div>
+          <div class="print-preview-actions">
+            <button class="btn btn-outline" id="close-print-preview" type="button">Back</button>
+            <button class="btn" id="confirm-print-report" type="button">Print Now</button>
+          </div>
+        </header>
+        <div class="print-preview-content" id="print-preview-content"></div>
+      </section>
     </div>
+    <div class="card staff-conversation-export" style="margin-bottom:20px">
+      <div class="section-title">Download a Student Conversation</div>
+      <p class="list-item-sub">Choose one student concern to download its case details and complete chat transcript. Only unassigned cases and cases assigned to you are available. Keep downloaded transcripts confidential.</p>
+      <div class="staff-report-controls" style="margin:12px 0 0">
+        <div class="field" style="margin:0;min-width:min(100%,360px)">
+          <label for="conversation-case">Student concern</label>
+          <select id="conversation-case">
+            <option value="">Loading accessible cases...</option>
+          </select>
+        </div>
+        <button class="btn btn-outline" id="download-conversation" type="button" disabled>Download Conversation DOCX</button>
+      </div>
+      <div id="conversation-error" class="error-box hidden" style="margin:12px 0 0"></div>
+    </div>
+    <div id="report-error" class="error-box hidden"></div>
+    <div id="report-results"><div class="empty-state">Generate a report to view current staff reporting data.</div></div>
   `;
+  document.getElementById('generate-report').addEventListener('click', generateReport);
+  document.getElementById('period-type').addEventListener('change', updatePeriodControls);
+  document.getElementById('period-type').addEventListener('change', () => {
+    if (!['semester-1', 'semester-2', 'custom'].includes(document.getElementById('period-type').value)) {
+      generateReport();
+    }
+  });
+  document.getElementById('period-date').addEventListener('change', generateReport);
+  document.getElementById('period-month').addEventListener('change', generateReport);
+  document.getElementById('download-docx').addEventListener('click', downloadReport);
+  document.getElementById('print-report').addEventListener('click', openPrintPreview);
+  document.getElementById('close-print-preview').addEventListener('click', closePrintPreview);
+  document.getElementById('confirm-print-report').addEventListener('click', () => window.print());
+  document.getElementById('print-preview-overlay').addEventListener('click', event => {
+    if (event.target.id === 'print-preview-overlay') closePrintPreview();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !document.getElementById('print-preview-overlay').classList.contains('hidden')) {
+      closePrintPreview();
+    }
+  });
+  document.getElementById('conversation-case').addEventListener('change', event => {
+    document.getElementById('download-conversation').disabled = !event.target.value;
+    document.getElementById('conversation-error').classList.add('hidden');
+  });
+  document.getElementById('download-conversation').addEventListener('click', downloadConversation);
+  updatePeriodControls();
+  await Promise.all([generateReport(), loadConversationOptions(user)]);
 })();
 </script>
 </body>

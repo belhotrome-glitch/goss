@@ -35,31 +35,40 @@ const ADMIN_NAV = [
 
 function renderShell(user, activeKey, pageTitle) {
   const nav = user.role === 'admin' ? ADMIN_NAV : (user.role === 'staff' ? STAFF_NAV : STUDENT_NAV);
+  const roleLabel = user.role === 'admin'
+    ? 'Administrator'
+    : user.role === 'staff'
+      ? user.position || 'Staff'
+      : 'Student';
   const navHtml = nav.map(item => `
     <a class="nav-item ${item.key === activeKey ? 'active' : ''}" href="${item.href}">
       <span class="nav-icon">${item.icon}</span>${item.label}
     </a>`).join('');
+  const topbarLogout = `
+          <a class="icon-btn topbar-logout" href="#" onclick="logout();return false;" aria-label="Log Out" title="Log Out">
+            <span aria-hidden="true">🚪</span><span>Log Out</span>
+          </a>`;
 
   document.getElementById('shell').innerHTML = `
-    <div class="sidebar">
-      <div class="brand">
+    <aside class="sidebar" id="app-sidebar">
+      <div class="brand user-brand">
         <div class="brand-logo"><img src="${RP}assets/img/logo.png" alt="Tangub City Global College logo"></div>
-        <div><h1>GOSS</h1></div>
+        <div class="brand-copy">
+          <h1>GOSS</h1>
+          <div class="brand-user">
+            <div class="name">${esc(user.full_name)}</div>
+            <div class="role">${esc(roleLabel)}</div>
+          </div>
+        </div>
       </div>
       ${navHtml}
       <div class="nav-spacer"></div>
-      <a class="nav-item" href="#" onclick="logout();return false;">
-        <span class="nav-icon">🚪</span>Log Out
-      </a>
-      <div class="nav-user">
-        <div class="name">${esc(user.full_name)}</div>
-        <div class="role">${user.role === 'admin' ? 'Administrator' : user.role === 'staff' ? (user.position || 'Staff') : 'Student'} ${user.user_id_no ? '· ' + esc(user.user_id_no) : ''}</div>
-      </div>
-    </div>
+    </aside>
+    <button class="sidebar-backdrop hidden" type="button" aria-label="Close navigation menu" tabindex="-1" onclick="toggleSidebar(false)"></button>
     <div class="main">
       <div class="topbar">
         <div style="display:flex;align-items:center;gap:12px">
-          <button class="icon-btn mobile-toggle" onclick="toggleSidebar()">☰</button>
+          <button class="icon-btn mobile-toggle" type="button" onclick="toggleSidebar()" aria-label="Open navigation menu" aria-controls="app-sidebar" aria-expanded="false">☰</button>
           <h2>${pageTitle}</h2>
         </div>
         <div class="topbar-actions">
@@ -67,10 +76,22 @@ function renderShell(user, activeKey, pageTitle) {
             🔔
             <span id="notif-badge" class="badge-dot hidden"></span>
           </a>
+          ${topbarLogout}
         </div>
       </div>
       <div class="content" id="page-content"></div>
     </div>
   `;
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') toggleSidebar(false);
+  });
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 800) toggleSidebar(false);
+  });
+  document.querySelectorAll('#app-sidebar .nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      if (window.innerWidth <= 800) toggleSidebar(false);
+    });
+  });
   refreshNotifBadge();
 }

@@ -39,7 +39,7 @@ async function loadDetail() {
   const thread = messages.map(m => `
     <div class="msg ${m.sender_id == CURRENT_USER.id ? 'mine' : 'theirs'}">
       <div>${esc(m.message)}</div>
-      <div class="msg-meta">${esc(m.sender_name)} · ${fmtDateTime(m.sent_at)}</div>
+      <div class="msg-meta">${esc(m.sender_name || (m.sender_id == CURRENT_USER.id ? CURRENT_USER.full_name : 'Student'))} · ${fmtDateTime(m.sent_at)}</div>
     </div>
   `).join('');
 
@@ -62,6 +62,7 @@ async function loadDetail() {
         ${!concern.assigned_to ? '<button class="btn btn-sm" style="margin-left:8px" onclick="claimCase()">Claim this case</button>' : ''}
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">${statusButtons}</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px">Conversation with ${esc(concern.student_name || 'Student')}</div>
       <div class="thread">${thread}</div>
       <form id="reply-form" class="reply-box">
         <textarea id="reply-text" rows="2" placeholder="Type a reply..." required></textarea>

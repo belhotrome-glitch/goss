@@ -25,6 +25,15 @@ function check(res) {
   return res.data;
 }
 
+async function fetchAllRows(buildQuery, pageSize = 1000) {
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const page = check(await buildQuery().order('id', { ascending: true }).range(from, from + pageSize - 1));
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+}
+
 // ---- audit logging (best-effort; never blocks the calling action) ----
 async function auditLog(action, targetType, targetId, metadata) {
   try {
@@ -88,7 +97,7 @@ async function api(path, { method = 'GET', body = null } = {}) {
     case 'auth': return handleAuth(action, body || {});
     case 'concerns': return handleConcerns(action, params, body || {});
     case 'appointments': return handleAppointments(action, params, body || {});
-    case 'dashboard': return handleDashboard(action);
+    case 'dashboard': return handleDashboard(action, params);
     case 'notifications': return handleNotifications(action, body || {});
     case 'profile': return handleProfile(action, body || {});
     case 'admin': return handleAdmin(action, params, body || {});
@@ -182,6 +191,9 @@ async function handleConcerns(action, params, body) {
     const c = check(await sb.from('concerns').select('*').eq('id', id).maybeSingle());
     if (!c) throw new Error('Not found');
     if (user.role === 'student' && c.student_id !== user.id) throw new Error('Forbidden');
+    if (user.role === 'staff' && c.assigned_to && c.assigned_to !== user.id) {
+      throw new Error('You can only access conversations for unassigned cases or cases assigned to you');
+    }
 
     const student = usersMap[c.student_id];
     const staff = c.assigned_to ? usersMap[c.assigned_to] : null;
@@ -190,7 +202,8 @@ async function handleConcerns(action, params, body) {
     c.student_course = student ? student.course : null;
     c.staff_name = staff ? staff.full_name : null;
 
-    const msgRows = check(await sb.from('messages').select('*').eq('concern_id', id).order('sent_at', { ascending: true }));
+    const msgRows = await fetchAllRows(() => sb.from('messages').select('*').eq('concern_id', id));
+    msgRows.sort((a, b) => (a.sent_at || '').localeCompare(b.sent_at || ''));
     const messages = msgRows.map((m) => {
       const sender = usersMap[m.sender_id];
       return {
@@ -552,35 +565,30 @@ async function handleAdmin(action, params, body) {
   if (action === 'reports') {
     const startDate = params.get('start_date') || '';
     const endDate = params.get('end_date') || '';
-    if ((startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) ||
-        (endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) ||
-        (startDate && endDate && startDate > endDate)) {
+    const periodType = params.get('period_type') || 'custom';
+    const reportPeriods = ['daily', 'weekly', 'monthly', 'semester-1', 'semester-2', 'custom'];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(endDate) ||
+        startDate > endDate ||
+        !reportPeriods.includes(periodType)) {
       throw new Error('Choose a valid date range');
     }
 
-    let concernsQuery = sb.from('concerns').select('id, student_id, category, is_urgent, status, created_at');
-    let messagesQuery = sb.from('messages').select('id, sender_id, sent_at');
-    let appointmentsQuery = sb.from('appointments').select('id, status, appt_date, staff_id');
-    if (startDate) {
-      concernsQuery = concernsQuery.gte('created_at', `${startDate} 00:00:00`);
-      messagesQuery = messagesQuery.gte('sent_at', `${startDate} 00:00:00`);
-      appointmentsQuery = appointmentsQuery.gte('appt_date', startDate);
-    }
-    if (endDate) {
-      concernsQuery = concernsQuery.lte('created_at', `${endDate} 23:59:59`);
-      messagesQuery = messagesQuery.lte('sent_at', `${endDate} 23:59:59`);
-      appointmentsQuery = appointmentsQuery.lte('appt_date', endDate);
-    }
-
-    const [concernsRes, messagesRes, apptsRes] = await Promise.all([
-      concernsQuery,
-      messagesQuery,
-      appointmentsQuery,
+    const dateFilteredQuery = (table, columns, dateColumn, isTimestamp = false) => () => {
+      let query = sb.from(table).select(columns);
+      if (startDate) query = query.gte(dateColumn, isTimestamp ? `${startDate} 00:00:00` : startDate);
+      if (endDate) query = query.lte(dateColumn, isTimestamp ? `${endDate} 23:59:59` : endDate);
+      return query;
+    };
+    const [concerns, messages, appts] = await Promise.all([
+      fetchAllRows(dateFilteredQuery(
+        'concerns', 'id, student_id, category, is_urgent, status, created_at', 'created_at', true)),
+      fetchAllRows(dateFilteredQuery('messages', 'id, sender_id, sent_at', 'sent_at', true)),
+      fetchAllRows(dateFilteredQuery('appointments', 'id, status, appt_date, staff_id', 'appt_date')),
     ]);
-    const concerns = check(concernsRes);
-    const messages = check(messagesRes);
-    const appts = check(apptsRes);
-    const usersMap = await fetchAllUsersMap();
+    const reportUsers = await fetchAllRows(() => sb.from('users').select('id, full_name, role'));
+    const usersMap = {};
+    reportUsers.forEach((row) => { usersMap[row.id] = row; });
 
     const byCategory = {};
     concerns.forEach((c) => { byCategory[c.category] = (byCategory[c.category] || 0) + 1; });
@@ -605,6 +613,73 @@ async function handleAdmin(action, params, body) {
         .map(([month, count]) => ({ month, count }));
     };
 
+    const reportDates = [];
+    for (let date = new Date(`${startDate}T12:00:00`), lastDate = new Date(`${endDate}T12:00:00`);
+      date <= lastDate; date.setDate(date.getDate() + 1)) {
+      reportDates.push(`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`);
+    }
+
+    let timeline;
+    if (periodType === 'daily') {
+      timeline = Array.from({ length: 24 }, (_, hour) => ({
+        period: `${pad(hour)}:00`,
+        concerns: 0,
+        messages: 0,
+        appointments: 0,
+      }));
+      const byHour = new Map(timeline.map((row, index) => [String(index), row]));
+      concerns.forEach((row) => {
+        const hour = (String(row.created_at).match(/[T ](\d{2}):/) || [])[1];
+        if (hour !== undefined && byHour.has(String(Number(hour)))) byHour.get(String(Number(hour))).concerns += 1;
+      });
+      messages.forEach((row) => {
+        const hour = (String(row.sent_at).match(/[T ](\d{2}):/) || [])[1];
+        if (hour !== undefined && byHour.has(String(Number(hour)))) byHour.get(String(Number(hour))).messages += 1;
+      });
+      appts.forEach((row) => {
+        const hour = (String(row.appt_time).match(/^(\d{1,2}):/) || [])[1];
+        if (hour !== undefined && byHour.has(String(Number(hour)))) byHour.get(String(Number(hour))).appointments += 1;
+      });
+    } else {
+      let buckets;
+      if (periodType === 'weekly' ||
+          (['monthly', 'custom'].includes(periodType) && reportDates.length <= 31)) {
+        buckets = reportDates.map((date) => ({
+          key: date,
+          period: new Date(`${date}T12:00:00`).toLocaleDateString(undefined, {
+            weekday: periodType === 'weekly' ? 'short' : undefined,
+            month: 'short',
+            day: 'numeric',
+          }),
+        }));
+      } else {
+        const months = [...new Set(reportDates.map((date) => date.slice(0, 7)))];
+        buckets = months.map((month) => ({
+          key: month,
+          period: new Date(`${month}-01T12:00:00`).toLocaleDateString(undefined, {
+            month: 'long',
+            year: 'numeric',
+          }),
+        }));
+      }
+      const bucketMap = new Map(buckets.map((bucket) => [bucket.key, {
+        period: bucket.period,
+        concerns: 0,
+        messages: 0,
+        appointments: 0,
+      }]));
+      const countInBuckets = (rows, getDate, dateLength, metric) => rows.forEach((row) => {
+        const key = String(getDate(row) || '').slice(0, dateLength);
+        const bucket = bucketMap.get(key);
+        if (bucket) bucket[metric] += 1;
+      });
+      const dateLength = buckets.length && buckets[0].key.length === 7 ? 7 : 10;
+      countInBuckets(concerns, (row) => row.created_at, dateLength, 'concerns');
+      countInBuckets(messages, (row) => row.sent_at, dateLength, 'messages');
+      countInBuckets(appts, (row) => row.appt_date, dateLength, 'appointments');
+      timeline = buckets.map((bucket) => bucketMap.get(bucket.key));
+    }
+
     const workloadMap = {};
     appts.forEach((a) => {
       const name = usersMap[a.staff_id] ? usersMap[a.staff_id].full_name : 'Unknown';
@@ -618,10 +693,11 @@ async function handleAdmin(action, params, body) {
     });
 
     return {
-      period: { start_date: startDate, end_date: endDate },
+      period: { type: periodType, start_date: startDate, end_date: endDate },
       concerns_total: concerns.length,
       students_with_concerns: new Set(concerns.map((c) => c.student_id)).size,
       urgent_concerns: concerns.filter((c) => c.is_urgent).length,
+      non_urgent_concerns: concerns.filter((c) => !c.is_urgent).length,
       concerns_by_category: Object.entries(byCategory).map(([category, count]) => ({ category, count }))
         .sort((a, b) => b.count - a.count),
       concerns_by_status: byStatus(concerns, concernStatuses, 'status'),
@@ -633,6 +709,7 @@ async function handleAdmin(action, params, body) {
       appointments_total: appts.length,
       appointments_by_status: byStatus(appts, appointmentStatuses, 'status'),
       appointments_by_month: byMonth(appts, (a) => a.appt_date),
+      activity_timeline: timeline,
       counselor_workload,
     };
   }
@@ -703,7 +780,7 @@ async function handleFeedback(action, params, body) {
 }
 
 // ---- dashboard.php ----
-async function handleDashboard(action) {
+async function handleDashboard(action, params = new URLSearchParams()) {
   const user = await requireLogin();
   const usersMap = await fetchAllUsersMap();
 
@@ -789,9 +866,24 @@ async function handleDashboard(action) {
   if (action === 'reports') {
     if (user.role !== 'staff') throw new Error('Forbidden');
 
-    const concerns = check(await sb.from('concerns').select('*'));
-    const appts = check(await sb.from('appointments').select('id'));
-    const students = check(await sb.from('users').select('id').eq('role', 'student'));
+    const startDate = params.get('start_date') || '';
+    const endDate = params.get('end_date') || '';
+    const periodType = params.get('period_type') || 'custom';
+    const reportPeriods = ['daily', 'weekly', 'monthly', 'semester-1', 'semester-2', 'custom'];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(endDate) ||
+        startDate > endDate ||
+        !reportPeriods.includes(periodType)) {
+      throw new Error('Choose a valid report period');
+    }
+
+    const concerns = await fetchAllRows(() => sb.from('concerns').select('*')
+      .gte('created_at', `${startDate} 00:00:00`)
+      .lte('created_at', `${endDate} 23:59:59`));
+    const appts = await fetchAllRows(() => sb.from('appointments').select('id, appt_date')
+      .gte('appt_date', startDate)
+      .lte('appt_date', endDate));
+    const students = await fetchAllRows(() => sb.from('users').select('id').eq('role', 'student'));
 
     const byCategoryMap = {};
     concerns.forEach((c) => { byCategoryMap[c.category] = (byCategoryMap[c.category] || 0) + 1; });
@@ -802,10 +894,13 @@ async function handleDashboard(action) {
     concerns.forEach((c) => { byStatusMap[c.status] = (byStatusMap[c.status] || 0) + 1; });
     const by_status = Object.entries(byStatusMap).map(([status, c]) => ({ status, c }));
 
+    const groupByDate = periodType === 'daily' || periodType === 'weekly' ||
+      (periodType === 'custom' &&
+        new Date(`${endDate}T12:00:00`) - new Date(`${startDate}T12:00:00`) < 31 * 86400000);
     const byMonthMap = {};
     concerns.forEach((c) => {
-      const ym = (c.created_at || '').slice(0, 7);
-      if (ym) byMonthMap[ym] = (byMonthMap[ym] || 0) + 1;
+      const period = (c.created_at || '').slice(0, groupByDate ? 10 : 7);
+      if (period) byMonthMap[period] = (byMonthMap[period] || 0) + 1;
     });
     const by_month = Object.entries(byMonthMap)
       .map(([ym, c]) => ({ ym, c })).sort((a, b) => a.ym.localeCompare(b.ym));
@@ -817,7 +912,18 @@ async function handleDashboard(action) {
       total_students: students.length,
     };
 
-    return { by_category, by_status, by_month, totals };
+    return {
+      period: {
+        type: periodType,
+        start_date: startDate,
+        end_date: endDate,
+        grouping: groupByDate ? 'day' : 'month',
+      },
+      by_category,
+      by_status,
+      by_month,
+      totals,
+    };
   }
 
   throw new Error('Unknown action');
@@ -1013,8 +1119,22 @@ async function markMessagesRead(concernId, currentUserId) {
   } catch { /* best-effort */ }
 }
 
-function toggleSidebar() {
-  document.querySelector('.sidebar')?.classList.toggle('open');
+function toggleSidebar(forceOpen) {
+  const sidebar = document.getElementById('app-sidebar');
+  if (!sidebar) return;
+  const isOpen = typeof forceOpen === 'boolean' ? forceOpen : !sidebar.classList.contains('open');
+  sidebar.classList.toggle('open', isOpen);
+  const toggle = document.querySelector('.mobile-toggle');
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', String(isOpen));
+    toggle.setAttribute('aria-label', isOpen ? 'Close navigation menu' : 'Open navigation menu');
+    toggle.textContent = isOpen ? '×' : '☰';
+  }
+  const backdrop = document.querySelector('.sidebar-backdrop');
+  if (backdrop) {
+    backdrop.classList.toggle('hidden', !isOpen);
+    backdrop.tabIndex = isOpen ? 0 : -1;
+  }
 }
 
 async function refreshNotifBadge() {
