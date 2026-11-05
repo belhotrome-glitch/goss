@@ -31,6 +31,38 @@ create table if not exists public.users (
 );
 
 alter table public.users add column if not exists course text;
+alter table public.users add column if not exists institute text;
+
+update public.users
+set institute = 'Institute of Health and Sciences (IHS)'
+where institute in (
+  'Institute of Midwifery',
+  'Institute of Health and Sciences'
+);
+
+-- Accept any student course name and trim surrounding whitespace.
+-- Existing rows are intentionally left unchanged.
+drop trigger if exists users_validate_student_course on public.users;
+drop function if exists public.validate_student_course();
+
+create or replace function public.normalize_student_course()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.role = 'student' and new.course is not null then
+    new.course := nullif(btrim(new.course), '');
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists users_normalize_student_course on public.users;
+create trigger users_normalize_student_course
+before insert or update of role, course on public.users
+for each row
+execute function public.normalize_student_course();
 
 -- v2: admin role + account activation flag
 alter table public.users drop constraint if exists users_role_check;

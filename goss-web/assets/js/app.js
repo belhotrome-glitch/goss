@@ -37,43 +37,90 @@ async function fetchAllRows(buildQuery, pageSize = 1000) {
 const INSTITUTE_COURSES = [
   {
     name: 'Institute of Teacher Education (ITE)',
+    reportCourses: [
+      'Bachelor of Elementary Education',
+      'Bachelor of Secondary Education Major in English',
+      'Bachelor of Secondary Education Major in Filipino',
+      'Bachelor of Secondary Education Major in Math',
+      'Bachelor of Secondary Education Major in Social Studies',
+    ],
     courses: [
       'Bachelor of Elementary Education (BEEd)', 'BEEd',
       'Bachelor of Secondary Education (BSEd) English', 'Bachelor of Secondary Education English', 'BSEd English',
+      'Bachelor of Secondary Education (BSEd) – English', 'BSEd – English',
       'Bachelor of Secondary Education (BSEd) Filipino', 'Bachelor of Secondary Education Filipino', 'BSEd Filipino',
+      'Bachelor of Secondary Education (BSEd) – Filipino', 'BSEd – Filipino',
       'Bachelor of Secondary Education (BSEd) Mathematics', 'Bachelor of Secondary Education Mathematics', 'BSEd Mathematics',
+      'Bachelor of Secondary Education (BSEd) – Mathematics', 'BSEd – Mathematics',
       'Bachelor of Secondary Education (BSEd) Social Studies', 'Bachelor of Secondary Education Social Studies', 'BSEd Social Studies',
+      'Bachelor of Secondary Education (BSEd) – Social Studies', 'BSEd – Social Studies',
+      'Bachelor of Secondary Education Major in Math', 'BSED-MATH',
+      'Bachelor of Secondary Education Major in Social Studies', 'BSED-SOCSTUD',
+      'Bachelor of Secondary Education Major in English', 'BSED-ENGLISH',
+      'Bachelor of Secondary Education Major in Filipino', 'BSED-FILIPINO',
     ],
   },
   {
     name: 'Institute of Computer Studies (ICS)',
+    reportCourses: ['Bachelor of Science in Computer Science'],
     courses: [
       'Bachelor of Science in Information Technology (BSIT)', 'BSIT',
       'BS Computer Science', 'Bachelor of Science in Computer Science',
+      'Bachelor of Science in Computer Science (BSCS)', 'BSCS',
     ],
   },
   {
     name: 'Institute of Business and Financial Services (IBFS)',
+    reportCourses: [
+      'Bachelor of Science in Business Administration Major in Marketing Management',
+      'Bachelor of Science in Business Administration Major in Human Resource Management',
+      'Bachelor of Science in Business Administration Major in Financial Management',
+      'Bachelor of Science in Office Administration',
+    ],
     courses: [
       'BS Business Administration Marketing Management', 'BSBA Marketing Management',
+      'BS Business Administration – Marketing Management',
       'Bachelor of Science in Business Administration Marketing Management',
+      'Bachelor of Science in Business Administration Major in Marketing Management', 'BSBA-MM',
       'BS Business Administration Human Resource Management', 'BSBA Human Resource Management', 'BSBA HRM',
+      'BS Business Administration – Human Resource Management',
       'Bachelor of Science in Business Administration Human Resource Management',
-      'Bachelor of Science in Office Administration (BSOA)', 'BSOA',
+      'Bachelor of Science in Business Administration Major in Human Resource Management',
+      'Bachelor of Science in Business Administration Major in Financial Management',
+      'BS Business Administration Financial Management', 'BSBA Financial Management', 'BSBA-FM',
+      'Bachelor of Science in Office Administration', 'Bachelor of Science in Office Administration (BSOA)', 'BSOA',
     ],
   },
   {
     name: 'Institute of Criminal Justice Education (ICJE)',
+    reportCourses: [
+      'Bachelor of Science in Criminology',
+      'Bachelor of Science in Industrial Security Management (BSISM)',
+    ],
     courses: [
-      'Bachelor of Science in Criminology (BSCrim)', 'BSCrim',
+      'Bachelor of Science in Criminology (BSCrim)', 'BSCrim', 'BS CRIM',
       'Bachelor of Science in Industrial Security Management (BSISM)', 'BSISM',
     ],
   },
   {
     name: 'Institute of Arts and Sciences (IAS)',
+    reportCourses: [
+      'Bachelor of Arts in Communication',
+      'Bachelor of Arts in English Language',
+      'Bachelor of Arts in Political Science',
+    ],
     courses: [
       'Bachelor of Arts in English Language Studies (BAELS)', 'BAELS',
-      'Bachelor of Arts in Political Science', 'BA Political Science',
+      'Bachelor of Arts in Communication', 'AB COMM',
+      'Bachelor of Arts in English Language', 'AB English',
+      'Bachelor of Arts in Political Science', 'BA Political Science', 'AB POLSCI',
+    ],
+  },
+  {
+    name: 'Institute of Health and Sciences (IHS)',
+    reportCourses: ['Diploma in Midwifery'],
+    courses: [
+      'Diploma in Midwifery', 'GEN MID',
     ],
   },
 ];
@@ -87,9 +134,33 @@ function normalizeCourse(course) {
     .replace(/\s+/g, ' ');
 }
 
+const REPORT_COURSE_ALIASES = new Map([
+  ['Bachelor of Science in Computer Science', [
+    'BSCS',
+    'BS Computer Science',
+    'Bachelor of Science in Computer Science (BSCS)',
+  ]],
+].flatMap(([canonical, aliases]) =>
+  [canonical, ...aliases].map((course) => [normalizeCourse(course), normalizeCourse(canonical)])));
+
+function reportCourseKey(course) {
+  const normalized = normalizeCourse(course);
+  return REPORT_COURSE_ALIASES.get(normalized) || normalized;
+}
+
+const HIDDEN_REPORT_COURSES = new Set([
+  'BSIT',
+  'Bachelor of Science in Information Technology',
+  'Bachelor of Science in Information Technology (BSIT)',
+  'BAELS',
+  'Bachelor of Arts in English Language Studies',
+  'Bachelor of Arts in English Language Studies (BAELS)',
+].map(normalizeCourse));
+
 const INSTITUTE_BY_COURSE = new Map(
   INSTITUTE_COURSES.flatMap((institute) =>
-    institute.courses.map((course) => [normalizeCourse(course), institute.name]))
+    [...institute.courses, ...institute.reportCourses]
+      .map((course) => [normalizeCourse(course), institute.name]))
 );
 
 function instituteForCourse(course) {
@@ -98,6 +169,9 @@ function instituteForCourse(course) {
 
 function instituteForStudent(student) {
   const savedInstitute = String(student.institute || '').trim();
+  if (savedInstitute === 'Institute of Midwifery' || savedInstitute === 'Institute of Health and Sciences') {
+    return 'Institute of Health and Sciences (IHS)';
+  }
   if (savedInstitute && savedInstitute !== 'Unclassified / course not listed') return savedInstitute;
   return instituteForCourse(student.course) || '—';
 }
@@ -136,16 +210,6 @@ function studentsWithAppointments(appointments, usersMap) {
       a.course.localeCompare(b.course) || a.student_name.localeCompare(b.student_name));
 }
 
-function studentCountsByInstitute(students) {
-  const counts = new Map(INSTITUTE_COURSES.map((institute) => [institute.name, 0]));
-  students.forEach((student) => {
-    if (student.institute !== '—') {
-      counts.set(student.institute, (counts.get(student.institute) || 0) + 1);
-    }
-  });
-  return Array.from(counts, ([institute, count]) => ({ institute, count }));
-}
-
 async function fetchStudentAppointmentReport(startDate, endDate) {
   const [appointments, users] = await Promise.all([
     fetchAllRows(() => sb.from('appointments')
@@ -160,13 +224,36 @@ async function fetchStudentAppointmentReport(startDate, endDate) {
   const students = studentsWithAppointments(appointments, usersMap);
   const visitedStudents = students.filter((student) =>
     student.appointments.some((appointment) => appointment.visited));
+  const studentProfiles = users.filter((user) => user.role === 'student');
+  const instituteOptions = [...new Set([
+    ...INSTITUTE_COURSES.map((institute) => institute.name),
+    ...studentProfiles.map(instituteForStudent).filter((institute) => institute !== '—'),
+  ])]
+    .sort((a, b) => a.localeCompare(b));
+  const coursesByName = new Map();
+  INSTITUTE_COURSES.forEach((institute) => {
+    institute.reportCourses.forEach((course) => {
+      coursesByName.set(course, new Set([institute.name]));
+    });
+  });
+  studentProfiles.forEach((student) => {
+    const course = String(student.course || '').trim();
+    if (!course || HIDDEN_REPORT_COURSES.has(normalizeCourse(course))) return;
+    if (!coursesByName.has(course)) coursesByName.set(course, new Set());
+    const institute = instituteForStudent(student);
+    if (institute !== '—') coursesByName.get(course).add(institute);
+  });
+  const courseOptions = [...coursesByName]
+    .map(([course, institutes]) => ({ course, institutes: [...institutes].sort((a, b) => a.localeCompare(b)) }))
+    .sort((a, b) => a.course.localeCompare(b.course));
   return {
     period: { start_date: startDate, end_date: endDate },
+    institute_options: instituteOptions,
+    course_options: courseOptions,
     students_with_appointments: students.length,
     students_who_visited: visitedStudents.length,
     recorded_visits: appointments.filter((appointment) =>
       appointment.status === 'Completed' && appointment.type === 'In-Person').length,
-    students_by_institute: studentCountsByInstitute(students),
     student_appointments: students,
   };
 }

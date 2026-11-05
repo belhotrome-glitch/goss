@@ -77,6 +77,7 @@
 let currentReport = null;
 let currentStudentAppointmentReport = null;
 let studentAppointmentReportMode = 'appointments';
+let studentAppointmentReportRequest = 0;
 
 function reportRows(title, rows, labelKey, countKey) {
   const total = rows.reduce((sum, row) => sum + Number(row[countKey] || 0), 0);
@@ -95,6 +96,90 @@ function reportRows(title, rows, labelKey, countKey) {
       ${rows.length ? `<tfoot><tr><td>Total</td><td>${total}</td></tr></tfoot>` : ''}
     </table>
   </section>`;
+}
+
+function reportGroupCounts(students, groupKey, activityLabel) {
+  const groups = new Map();
+  students.forEach(student => {
+    const label = student[groupKey] || '—';
+    const group = groups.get(label) || { label, students: 0, activity: 0 };
+    group.students += 1;
+    group.activity += student.appointments.length;
+    groups.set(label, group);
+  });
+  const rows = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
+  const body = rows.length ? rows.map(row => `
+    <tr><td>${esc(row.label)}</td><td>${row.students}</td><td>${row.activity}</td></tr>
+  `).join('') : '<tr><td colspan="3">No records for the selected filters</td></tr>';
+  return `<section class="report-section">
+    <h2>Students by ${groupKey === 'institute' ? 'Institute' : 'Course'}</h2>
+    <table>
+      <thead><tr><th scope="col">${groupKey === 'institute' ? 'Institute' : 'Course'}</th><th scope="col">Unique students</th><th scope="col">${activityLabel}</th></tr></thead>
+      <tbody>${body}</tbody>
+      ${rows.length ? `<tfoot><tr><td>Total</td><td>${rows.reduce((sum, row) => sum + row.students, 0)}</td><td>${rows.reduce((sum, row) => sum + row.activity, 0)}</td></tr></tfoot>` : ''}
+    </table>
+  </section>`;
+}
+
+function populateStudentAppointmentFilters(data) {
+  const instituteSelect = document.getElementById('student-institute-filter');
+  const courseSelect = document.getElementById('student-course-filter');
+  const previousInstitute = instituteSelect.value;
+  const previousCourse = courseSelect.value;
+  const institutes = data.institute_options || [];
+  const courses = data.course_options || [];
+  instituteSelect.innerHTML = '<option value="">All institutes</option>' +
+    institutes.map(institute => `<option value="${esc(institute)}">${esc(institute)}</option>`).join('');
+  if (institutes.includes(previousInstitute)) instituteSelect.value = previousInstitute;
+  const filteredCourses = courses.filter(course =>
+    !instituteSelect.value || course.institutes.includes(instituteSelect.value));
+  courseSelect.innerHTML = '<option value="">All courses</option>' +
+    filteredCourses.map(course =>
+      `<option value="${esc(course.course)}">${esc(course.course)}</option>`).join('');
+  if (filteredCourses.some(course => course.course === previousCourse)) {
+    courseSelect.value = previousCourse;
+  }
+  instituteSelect.onchange = () => {
+    populateStudentAppointmentFilters(data);
+    if (currentStudentAppointmentReport) generateStudentAppointmentReport();
+  };
+  courseSelect.onchange = () => {
+    if (currentStudentAppointmentReport) generateStudentAppointmentReport();
+  };
+}
+
+function filterStudentAppointmentReport(data, visitMode) {
+  let students = data.student_appointments;
+  if (visitMode) {
+    students = students.map(student => ({
+      ...student,
+      appointments: student.appointments.filter(appointment => appointment.visited),
+    })).filter(student => student.appointments.length);
+  }
+  const institute = document.getElementById('student-institute-filter').value;
+  const course = document.getElementById('student-course-filter').value;
+  if (institute) students = students.filter(student => student.institute === institute);
+  if (course) {
+    const selectedCourse = reportCourseKey(course);
+    students = students.filter(student => reportCourseKey(student.course) === selectedCourse);
+  }
+  const activityCount = students.reduce((total, student) => total + student.appointments.length, 0);
+  const filtered = {
+    ...data,
+    student_appointments: students,
+    students_with_appointments: students.length,
+    students_who_visited: visitMode ? students.length : 0,
+    recorded_visits: visitMode ? activityCount : 0,
+    total_appointments: visitMode ? 0 : activityCount,
+    filters: {
+      institute: institute || 'All institutes',
+      course: course || 'All courses',
+    },
+  };
+  const activityLabel = visitMode ? 'Recorded visits' : 'Appointments';
+  filtered.institute_groups = reportGroupCounts(students, 'institute', activityLabel);
+  filtered.course_groups = reportGroupCounts(students, 'course', activityLabel);
+  return filtered;
 }
 
 function reportStudentAppointments(students, visitMode) {
@@ -159,29 +244,16 @@ function studentVisitReport(r, visitMode) {
       <div><strong>Generated:</strong> ${esc(r.generated_at)}</div>
     </div>
     ${reportRows(visitMode ? 'Office Visit Summary' : 'Appointment Summary', totalRows, 'label', 'count')}
-    ${reportRows('Students by Institute', r.students_by_institute, 'institute', 'count')}
+    <p><strong>Filters:</strong> ${esc(r.filters.institute)} · ${esc(r.filters.course)}</p>
+    ${r.institute_groups}
+    ${r.course_groups}
     ${reportStudentAppointments(r.student_appointments, visitMode)}
     </article>`;
 }
 
 function renderStudentAppointmentReport(data, period) {
-  if (studentAppointmentReportMode === 'visits') {
-    data = { ...data };
-    data.student_appointments = data.student_appointments
-      .map(student => ({
-        ...student,
-        appointments: student.appointments.filter(appointment => appointment.visited),
-      }))
-      .filter(student => student.appointments.length);
-    data.students_who_visited = data.student_appointments.length;
-    data.recorded_visits = data.student_appointments.reduce((total, student) =>
-      total + student.appointments.length, 0);
-    const visitCounts = new Map((data.students_by_institute || []).map(row => [row.institute, 0]));
-    data.student_appointments.forEach(student => {
-      if (student.institute !== '—') visitCounts.set(student.institute, (visitCounts.get(student.institute) || 0) + 1);
-    });
-    data.students_by_institute = Array.from(visitCounts, ([institute, count]) => ({ institute, count }));
-  }
+  populateStudentAppointmentFilters(data);
+  data = filterStudentAppointmentReport(data, studentAppointmentReportMode === 'visits');
   currentStudentAppointmentReport = {
     ...data,
     period: { ...data.period, label: period.label },
@@ -194,6 +266,7 @@ function renderStudentAppointmentReport(data, period) {
 }
 
 async function generateStudentAppointmentReport() {
+  const requestId = ++studentAppointmentReportRequest;
   const button = document.getElementById('generate-student-appointment-report');
   const error = document.getElementById('student-appointment-error');
   error.classList.add('hidden');
@@ -207,14 +280,18 @@ async function generateStudentAppointmentReport() {
       end_date: period.endDate,
     });
     const report = await api('/api/admin.php?' + query.toString());
+    if (requestId !== studentAppointmentReportRequest) return;
     renderStudentAppointmentReport(report, period);
   } catch (err) {
+    if (requestId !== studentAppointmentReportRequest) return;
     error.textContent = err.message || `Could not generate the ${studentAppointmentReportMode === 'visits' ? 'Guidance Office Visit' : 'Appointment'} Report.`;
     error.classList.remove('hidden');
   } finally {
-    button.disabled = false;
-    button.textContent = studentAppointmentReportMode === 'visits'
-      ? 'Generate Guidance Office Visit Report' : 'Generate Appointment Report';
+    if (requestId === studentAppointmentReportRequest) {
+      button.disabled = false;
+      button.textContent = studentAppointmentReportMode === 'visits'
+        ? 'Generate Guidance Office Visit Report' : 'Generate Appointment Report';
+    }
   }
 }
 
@@ -713,6 +790,14 @@ async function generateReport() {
             <input type="date" id="student-end-date">
           </div>
         </div>
+        <div class="field" style="margin:0">
+          <label for="student-institute-filter">Institute filter</label>
+          <select id="student-institute-filter"><option value="">All institutes</option></select>
+        </div>
+        <div class="field" style="margin:0">
+          <label for="student-course-filter">Course filter</label>
+          <select id="student-course-filter"><option value="">All courses</option></select>
+        </div>
         <button class="btn" id="generate-student-appointment-report" type="button">Generate Appointment Report</button>
       </div>
       <p class="list-item-sub hidden" id="student-semester-help" style="margin:0 0 12px">Enter the semester date range based on your school's academic calendar.</p>
@@ -772,6 +857,14 @@ async function generateReport() {
   document.getElementById('print-report').addEventListener('click', openPrintPreview);
   document.getElementById('student-period-type').addEventListener('change', () => updatePeriodControls('student-'));
   document.getElementById('generate-student-appointment-report').addEventListener('click', generateStudentAppointmentReport);
+  if ('BroadcastChannel' in window) {
+    const officeVisitChannel = new BroadcastChannel('goss-office-visits');
+    officeVisitChannel.addEventListener('message', event => {
+      if (event.data && event.data.type === 'recorded' && studentAppointmentReportMode === 'visits') {
+        generateStudentAppointmentReport();
+      }
+    });
+  }
   document.getElementById('download-student-visits-docx').addEventListener('click', () =>
     downloadDocxReport('#student-appointment-results .student-visit-document', 'download-student-visits-docx',
       studentAppointmentReportMode === 'visits' ? 'GOSS-Guidance-Office-Visit-Report' : 'GOSS-Appointment-Report',

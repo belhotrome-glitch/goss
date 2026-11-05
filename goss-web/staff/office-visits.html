@@ -50,6 +50,11 @@ async function recordOfficeVisit(studentId) {
       method: 'POST',
       body: { student_id: studentId },
     });
+    if ('BroadcastChannel' in window) {
+      const channel = new BroadcastChannel('goss-office-visits');
+      channel.postMessage({ type: 'recorded' });
+      channel.close();
+    }
     const student = STUDENTS.find(item => item.id === studentId);
     toast(`Office visit recorded for ${student ? student.full_name : 'student'}`);
   } catch (err) {
