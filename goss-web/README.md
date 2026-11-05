@@ -82,8 +82,12 @@ the full list.
   in-person visits and the staff member each student met; staff can record a
   walk-in from the Record Office Visit page. Run
   `supabase/allow_staff_record_office_visits.sql` in the Supabase SQL Editor
-  to grant the required row-level permission. The appointment report includes all
-  appointment types and statuses. Message content and individual case details are never
+  to grant the required row-level permission. Both reports include all six
+  institutes and their listed courses except BSIT, even when no students are
+  currently enrolled; additional institute/course values in student records
+  are also included, except BSIT. Reports show
+  unique-student and visit/appointment counts for those groupings. The appointment report includes all appointment types
+  and statuses. Message content and individual case details are never
   included in the exported reports.
 - `staff/reports.html` — generate an all-records aggregate report with
   concern, appointment, student, category, status, and monthly totals. Staff
@@ -95,8 +99,12 @@ the full list.
   in-person visits and the staff member each student met; staff can record a
   walk-in from the Record Office Visit page. Run
   `supabase/allow_staff_record_office_visits.sql` in the Supabase SQL Editor
-  to grant the required row-level permission. The appointment report includes all
-  appointment types and statuses visible to the signed-in staff member.
+  to grant the required row-level permission. Both reports include all six
+  institutes and their listed courses except BSIT, even when no students are
+  currently enrolled; additional institute/course values in student records
+  are also included, except BSIT. Reports show
+  unique-student and visit/appointment counts for those groupings. The appointment report includes all appointment types
+  and statuses visible to the signed-in staff member.
   Semester and custom reports require entering both
   dates and selecting Generate Report. Staff can
   also select one accessible student concern to download its case details and
@@ -146,6 +154,14 @@ the full list.
 ### 2. Run the schema
 SQL Editor → paste `supabase/schema.sql` → Run. Safe to re-run on a database
 that already has the v1 schema — it upgrades in place.
+
+The schema accepts any student course text and trims surrounding whitespace
+when a student is added or their course is changed. Existing course values are
+left unchanged. For an existing project, run
+`supabase/student_course_catalog.sql` in the SQL Editor.
+For an existing project, run `supabase/normalize_health_sciences_institute.sql`
+to rename saved Midwifery institute values to Institute of Health and Sciences
+(IHS).
 
 For an existing project that already ran the previous schema, run
 `supabase/reassignment_chat_history.sql` in the SQL Editor to add separate
