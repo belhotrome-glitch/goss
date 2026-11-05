@@ -57,7 +57,7 @@ function apptRow(a) {
     `;
   } else if (a.status === 'Scheduled') {
     actions = `
-      <button class="btn btn-sm" onclick="updateStatus('${a.id}', 'Completed')">Complete</button>
+      <button class="btn btn-sm" title="${a.type === 'In-Person' ? 'Confirm that this student visited the Guidance Office' : 'Mark this virtual appointment as complete'}" onclick="updateStatus('${a.id}', 'Completed')">${a.type === 'In-Person' ? 'Mark Visited' : 'Complete'}</button>
       <button class="btn btn-sm btn-outline" onclick='openRescheduleModal(${JSON.stringify(a)})'>Reschedule</button>
       <button class="btn btn-sm btn-outline" onclick="updateStatus('${a.id}', 'Cancelled')">Cancel</button>
     `;
@@ -68,7 +68,7 @@ function apptRow(a) {
       <td>${fmtDate(a.appt_date)}</td>
       <td>${esc(a.appt_time)}</td>
       <td>${esc(a.type)}</td>
-      <td><span class="badge ${badgeClass(a.status)}">${a.status === 'Pending' ? 'Pending approval' : a.status}</span></td>
+      <td><span class="badge ${badgeClass(a.status)}">${a.status === 'Pending' ? 'Pending approval' : a.status === 'Completed' && a.type === 'In-Person' ? 'Visited' : a.status}</span></td>
       <td style="display:flex;gap:6px;flex-wrap:wrap">${actions}</td>
     </tr>`;
 }

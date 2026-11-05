@@ -18,8 +18,11 @@ const STAFF_NAV = [
   { href: RP + 'staff/dashboard.html', icon: '🏠', label: 'Dashboard', key: 'dashboard' },
   { href: RP + 'staff/concerns.html', icon: '💬', label: 'All Concerns', key: 'concerns' },
   { href: RP + 'staff/appointments.html', icon: '📅', label: 'Appointments', key: 'appointments' },
+  { href: RP + 'staff/office-visits.html', icon: '✅', label: 'Record Office Visit', key: 'office-visits' },
   { href: RP + 'staff/announcements.html', icon: '📣', label: 'Announcements', key: 'announcements' },
   { href: RP + 'staff/reports.html', icon: '📊', label: 'Reports', key: 'reports' },
+  { href: RP + 'staff/reports.html?view=guidance-visits', icon: '🗂️', label: 'Guidance Visit Report', key: 'visit-report' },
+  { href: RP + 'staff/reports.html?view=appointments', icon: '📋', label: 'Appointment Report', key: 'appointment-report' },
   { href: RP + 'shared/notifications.html', icon: '🔔', label: 'Notifications', key: 'notifications' },
   { href: RP + 'staff/profile.html', icon: '👤', label: 'Profile', key: 'profile' },
 ];
@@ -30,6 +33,8 @@ const ADMIN_NAV = [
   { href: RP + 'admin/concerns.html', icon: '💬', label: 'Concerns', key: 'concerns' },
   { href: RP + 'admin/appointments.html', icon: '📅', label: 'Appointments', key: 'appointments' },
   { href: RP + 'admin/reports.html', icon: '📊', label: 'Reports', key: 'reports' },
+  { href: RP + 'admin/reports.html?view=guidance-visits', icon: '🗂️', label: 'Guidance Visit Report', key: 'visit-report' },
+  { href: RP + 'admin/reports.html?view=appointments', icon: '📋', label: 'Appointment Report', key: 'appointment-report' },
   { href: RP + 'admin/audit-logs.html', icon: '🛡️', label: 'Audit Logs', key: 'audit' },
 ];
 

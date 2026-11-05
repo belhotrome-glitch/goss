@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Record Office Visit — GOSS Staff</title>
+<link rel="icon" type="image/png" href="../assets/img/logo.png">
+<link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+<div class="app-shell" id="shell"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>window.ROOT_PATH = "../";</script>
+<script src="../assets/js/supabase-config.js"></script>
+<script src="../assets/js/app.js"></script>
+<script src="../assets/js/shell.js"></script>
+<script>
+let STUDENTS = [];
+let RECORDING_STUDENT_ID = null;
+
+function renderStudentList() {
+  const query = document.getElementById('student-search').value.trim().toLowerCase();
+  const matches = STUDENTS.filter(student =>
+    [student.full_name, student.user_id_no, student.course, instituteForCourse(student.course)]
+      .some(value => String(value || '').toLowerCase().includes(query)));
+  document.getElementById('student-count').textContent =
+    `${matches.length} student${matches.length === 1 ? '' : 's'}`;
+  document.getElementById('student-list').innerHTML = matches.length
+    ? matches.map(student => `
+      <tr>
+        <td>${esc(student.full_name || 'Student')}</td>
+        <td>${esc(student.user_id_no || '—')}</td>
+        <td>${esc(student.course || '—')}</td>
+        <td>${esc(instituteForCourse(student.course) || '—')}</td>
+        <td><button class="btn btn-sm" type="button" data-record-student="${esc(student.id)}"
+          ${RECORDING_STUDENT_ID ? 'disabled' : ''}>${RECORDING_STUDENT_ID === student.id ? 'Recording…' : 'Record Visit'}</button></td>
+      </tr>
+    `).join('')
+    : '<tr><td colspan="5"><div class="empty-state">No students match your search.</div></td></tr>';
+}
+
+async function recordOfficeVisit(studentId) {
+  if (RECORDING_STUDENT_ID) return;
+  const error = document.getElementById('record-visit-error');
+  error.classList.add('hidden');
+  RECORDING_STUDENT_ID = studentId;
+  renderStudentList();
+  try {
+    await api('/api/appointments.php?action=record_visit', {
+      method: 'POST',
+      body: { student_id: studentId },
+    });
+    const student = STUDENTS.find(item => item.id === studentId);
+    toast(`Office visit recorded for ${student ? student.full_name : 'student'}`);
+  } catch (err) {
+    const message = err.message || 'Could not record this office visit.';
+    error.textContent = /row.level security policy/i.test(message)
+      ? 'Supabase is blocking office-visit records. Run supabase/allow_staff_record_office_visits.sql in the Supabase SQL Editor, then try again.'
+      : message;
+    error.classList.remove('hidden');
+  } finally {
+    RECORDING_STUDENT_ID = null;
+    renderStudentList();
+  }
+}
+
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+  if (user.role !== 'staff') {
+    location.href = user.role === 'admin' ? '../admin/dashboard.html' : '../student/dashboard.html';
+    return;
+  }
+  renderShell(user, 'office-visits', 'Record Office Visit');
+  document.getElementById('page-content').innerHTML = `
+    <div class="section-header">
+      <div>
+        <div class="section-title">Record a Guidance Office Visit</div>
+        <p class="list-item-sub">Find the student who came to the office and select Record Visit. The visit will appear in the Guidance Office Visit Report.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+        <div class="field" style="margin:0;min-width:min(100%,320px)">
+          <label for="student-search">Search students</label>
+          <input id="student-search" type="search" placeholder="Name, student ID, course, or institute">
+        </div>
+        <span class="list-item-sub" id="student-count" aria-live="polite"></span>
+      </div>
+      <div class="error-box hidden" id="record-visit-error" role="alert" style="margin-bottom:12px"></div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Student</th><th>Student ID</th><th>Course</th><th>Institute</th><th>Action</th></tr></thead>
+          <tbody id="student-list"><tr><td colspan="5"><div class="empty-state">Loading students…</div></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  document.getElementById('student-search').addEventListener('input', renderStudentList);
+  document.getElementById('student-list').addEventListener('click', event => {
+    const button = event.target.closest('[data-record-student]');
+    if (button) recordOfficeVisit(button.dataset.recordStudent);
+  });
+  try {
+    const result = await api('/api/appointments.php?action=student_list');
+    STUDENTS = result.students;
+    renderStudentList();
+  } catch (err) {
+    const error = document.getElementById('record-visit-error');
+    error.textContent = err.message || 'Could not load the student list.';
+    error.classList.remove('hidden');
+    document.getElementById('student-list').innerHTML =
+      '<tr><td colspan="5"><div class="empty-state">Could not load students.</div></td></tr>';
+  }
+})();
+</script>
+</body>
+</html>

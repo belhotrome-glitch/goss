@@ -514,6 +514,22 @@ create policy "appointments_insert" on public.appointments
     or (public.my_role() = 'staff' and staff_id = auth.uid())
   );
 
+drop policy if exists "appointments_staff_record_office_visit" on public.appointments;
+create policy "appointments_staff_record_office_visit" on public.appointments
+  for insert to authenticated with check (
+    public.my_role() = 'staff'
+    and staff_id = auth.uid()
+    and type = 'In-Person'
+    and status = 'Completed'
+    and location = 'Guidance Office'
+    and exists (
+      select 1
+      from public.users as student
+      where student.id = appointments.student_id
+        and student.role = 'student'
+    )
+  );
+
 drop policy if exists "appointments_update" on public.appointments;
 create policy "appointments_update" on public.appointments
   for update using (student_id = auth.uid() or staff_id = auth.uid() or public.is_admin());
