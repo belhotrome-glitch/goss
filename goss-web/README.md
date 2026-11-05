@@ -76,17 +76,32 @@ the full list.
   download contains the generated report's summary, activity timeline (with
   chart series represented as exact counts), breakdowns, period, and
   timestamp. Print Report and the dashboard's print shortcut open an in-app
-  preview before the browser print dialog. Message content and individual case
-  details are never included in the exported report.
+  preview before the browser print dialog. Separate Guidance Office Visit and
+  Appointment Reports have independent date controls, Generate buttons,
+  Word downloads, and print previews. The visit report includes completed
+  in-person visits and the staff member each student met; staff can record a
+  walk-in from the Record Office Visit page. Run
+  `supabase/allow_staff_record_office_visits.sql` in the Supabase SQL Editor
+  to grant the required row-level permission. The appointment report includes all
+  appointment types and statuses. Message content and individual case details are never
+  included in the exported reports.
 - `staff/reports.html` — generate an all-records aggregate report with
   concern, appointment, student, category, status, and monthly totals. Staff
   can generate daily, weekly, monthly, first-semester, second-semester, or
   custom-date reports and download the report as a formatted Word document or
-  preview it in-app before printing. Semester and custom reports require
-  entering both dates and selecting Generate Report. Staff can also select
-  one accessible student concern to download its case details and complete
-  chat transcript as a separate DOCX;
-  conversation access includes assigned cases, and each reply is attributed
+  preview it in-app before printing. Separate Guidance Office Visit and
+  Appointment Reports have independent date controls, Generate buttons,
+  Word downloads, and print previews. The visit report includes completed
+  in-person visits and the staff member each student met; staff can record a
+  walk-in from the Record Office Visit page. Run
+  `supabase/allow_staff_record_office_visits.sql` in the Supabase SQL Editor
+  to grant the required row-level permission. The appointment report includes all
+  appointment types and statuses visible to the signed-in staff member.
+  Semester and custom reports require entering both
+  dates and selecting Generate Report. Staff can
+  also select one accessible student concern to download its case details and
+  complete chat transcript as a separate DOCX; conversation access includes
+  assigned cases, and each reply is attributed
   to the staff member who sent it.
 - `admin-audit-logs.html` — latest 200 audit events (who did what, to which
   record, when — never message content, passwords, or tokens).

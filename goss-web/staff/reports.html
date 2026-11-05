@@ -7,6 +7,11 @@
 <link rel="icon" type="image/png" href="../assets/img/logo.png">
 <link rel="stylesheet" href="../assets/css/style.css">
 <style>
+#page-content:not(.guidance-report-only) #student-appointment-controls,
+#page-content:not(.guidance-report-only) #student-appointment-results,
+#page-content.guidance-report-only #general-report-controls,
+#page-content.guidance-report-only #staff-conversation-export,
+#page-content.guidance-report-only #report-results { display: none !important; }
 .staff-report { max-width: 1100px; margin: 0 auto; }
 .staff-report-heading { display: flex; align-items: center; gap: 16px; padding-bottom: 18px; border-bottom: 2px solid var(--primary-teal); margin-bottom: 18px; }
 .staff-report-heading img { width: 64px; height: 64px; object-fit: contain; }
@@ -18,6 +23,10 @@
 .staff-report-section table { width: 100%; background: #fff; border: 1px solid var(--border); border-collapse: collapse; }
 .staff-report-section th { background: var(--primary-teal-light); color: var(--text-primary); }
 .staff-report-section td:last-child, .staff-report-section th:last-child { width: 140px; text-align: right; }
+.staff-report-section .student-appointments-table td:last-child,
+.staff-report-section .student-appointments-table th:last-child { width: auto; text-align: left; }
+.student-appointments-table td { vertical-align: top; }
+.student-appointments-table ul { margin: 0; padding-left: 18px; }
 .staff-report-section td, .staff-report-section th { padding: 9px 10px; border-bottom: 1px solid var(--border); }
 .staff-report-section tfoot td { font-weight: 700; border-top: 2px solid var(--border); }
 .staff-report-controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
@@ -34,6 +43,9 @@
 @media print {
   @page { size: A4 portrait; margin: 14mm; }
   .sidebar, .topbar, .staff-report-controls, .staff-conversation-export, .print-preview-overlay { display: none !important; }
+  .staff-student-visit-report { display: none !important; }
+  body.printing-student-visits .staff-report { display: none !important; }
+  body.printing-student-visits .staff-student-visit-report { display: block !important; }
   body, .app-shell, .main, .content { display: block; min-height: 0; overflow: visible; background: #fff; }
   .content { padding: 0; }
   .staff-report { max-width: none; }
@@ -53,6 +65,8 @@
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script>
 let currentReport = null;
+let currentStudentAppointmentReport = null;
+let studentAppointmentReportMode = 'appointments';
 let generatedAt = '';
 let CURRENT_USER = null;
 
@@ -67,10 +81,11 @@ function formatReportDate(value, options = { month: 'long', day: 'numeric', year
   return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, options);
 }
 
-function getReportPeriod() {
-  const type = document.getElementById('period-type').value;
-  const periodDate = document.getElementById('period-date').value;
-  const periodMonth = document.getElementById('period-month').value;
+function getReportPeriod(prefix = '') {
+  const element = id => document.getElementById(`${prefix}${id}`);
+  const type = element('period-type').value;
+  const periodDate = element('period-date').value;
+  const periodMonth = element('period-month').value;
   let startDate;
   let endDate;
   let label;
@@ -96,8 +111,8 @@ function getReportPeriod() {
     endDate = dateInputValue(new Date(year, month, 0));
     label = `Monthly · ${new Date(year, month - 1, 1, 12).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}`;
   } else {
-    startDate = document.getElementById('start-date').value;
-    endDate = document.getElementById('end-date').value;
+    startDate = element('start-date').value;
+    endDate = element('end-date').value;
     if (!startDate || !endDate) throw new Error('Choose both start and end dates.');
     if (startDate > endDate) throw new Error('The start date must be on or before the end date.');
     const name = type === 'semester-1' ? 'First Semester'
@@ -107,19 +122,20 @@ function getReportPeriod() {
   return { type, startDate, endDate, label };
 }
 
-function updatePeriodControls() {
-  const type = document.getElementById('period-type').value;
+function updatePeriodControls(prefix = '') {
+  const element = id => document.getElementById(`${prefix}${id}`);
+  const type = element('period-type').value;
   const anchoredPeriod = ['daily', 'weekly'].includes(type);
   const monthlyPeriod = type === 'monthly';
   const rangePeriod = ['semester-1', 'semester-2', 'custom'].includes(type);
-  document.getElementById('period-date-field').classList.toggle('hidden', !anchoredPeriod);
-  document.getElementById('period-month-field').classList.toggle('hidden', !monthlyPeriod);
-  document.getElementById('period-range-fields').classList.toggle('hidden', !rangePeriod);
-  document.getElementById('period-range-title').textContent = type === 'semester-1'
+  element('period-date-field').classList.toggle('hidden', !anchoredPeriod);
+  element('period-month-field').classList.toggle('hidden', !monthlyPeriod);
+  element('period-range-fields').classList.toggle('hidden', !rangePeriod);
+  element('period-range-title').textContent = type === 'semester-1'
     ? 'First semester start date'
     : type === 'semester-2' ? 'Second semester start date' : 'Start date';
-  document.getElementById('semester-help').classList.toggle('hidden', !['semester-1', 'semester-2'].includes(type));
-  document.getElementById('period-date-label').textContent = type === 'weekly' ? 'Date in week' : 'Report date';
+  element('semester-help').classList.toggle('hidden', !['semester-1', 'semester-2'].includes(type));
+  element('period-date-label').textContent = type === 'weekly' ? 'Date in week' : 'Report date';
 }
 
 function reportSection(title, firstColumn, rows, labelKey, valueKey) {
@@ -135,6 +151,128 @@ function reportSection(title, firstColumn, rows, labelKey, valueKey) {
       ${rows.length ? `<tfoot><tr><td>Total</td><td>${total}</td></tr></tfoot>` : ''}
     </table>
   </section>`;
+}
+
+function reportStudentAppointments(students, visitMode) {
+  const body = students.length ? students.map(student => {
+    const staffNames = [...new Set(student.appointments.map(appointment =>
+      appointment.staff_name).filter(Boolean))];
+    const appointmentDetails = student.appointments.map(appointment => `
+      <li>${esc(formatReportDate(appointment.date))}${appointment.time ? ` at ${esc(appointment.time)}` : ''}
+        · ${esc(appointment.type || 'Type unavailable')}
+        · ${esc(appointment.visited ? 'Visited' : (appointment.status || 'Status unavailable'))}
+        · ${esc(appointment.staff_name || 'Staff not available')}</li>
+    `).join('');
+    return `<tr>
+      <td>${esc(student.institute)}</td>
+      <td>${esc(student.course || 'Not provided')}</td>
+      <td>${esc(student.student_name)}</td>
+      <td>${esc(student.student_no || 'Not provided')}</td>
+      <td>${esc(staffNames.join(', ') || 'Staff not available')}</td>
+      <td><ul>${appointmentDetails}</ul></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="6">${visitMode
+    ? 'No students recorded as visiting the Guidance Office for this period'
+    : 'No student appointments for this period'}</td></tr>`;
+  return `<section class="staff-report-section">
+    <h2>${visitMode ? 'List of Students Who Visited the Guidance Office' : 'Students with Guidance Office Appointments'}</h2>
+    <p>${visitMode
+      ? 'Only completed in-person appointments are included. Each student is listed once with their recorded visit dates and the staff member they met.'
+      : 'Includes all appointment types and statuses in the selected reporting period. Each student is listed once with their appointment dates, types, statuses, and assigned staff members.'}</p>
+    <table class="student-appointments-table">
+      <thead><tr>
+        <th scope="col">Institute</th><th scope="col">Course</th><th scope="col">Student</th>
+        <th scope="col">Staff member</th>
+        <th scope="col">${visitMode ? 'Recorded office visit(s)' : 'Appointment details'}</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+  </section>`;
+}
+
+function studentVisitReport(data, visitMode) {
+  const totalRows = visitMode
+    ? [
+      { label: 'Students who visited', count: data.students_who_visited },
+      { label: 'Recorded office visits', count: data.recorded_visits },
+    ]
+    : [
+      { label: 'Unique students with appointments', count: data.students_with_appointments },
+      { label: 'Total appointments', count: data.student_appointments.reduce((total, student) =>
+        total + student.appointments.length, 0) },
+    ];
+  return `<article class="staff-report staff-student-visit-report">
+    <header class="staff-report-heading">
+      <img src="../assets/img/logo.png" alt="Tangub City Global College logo">
+      <div>
+        <h1>${visitMode ? 'Guidance Office Visit Report' : 'Appointment Report'}</h1>
+        <p>Tangub City Global College</p>
+        <p>Guidance Office Support System</p>
+      </div>
+    </header>
+    <div class="staff-report-meta">
+      <div><strong>Reporting period:</strong> ${esc(data.period.label)}</div>
+      <div><strong>Date range:</strong> ${esc(formatReportDate(data.period.start_date))} to ${esc(formatReportDate(data.period.end_date))}</div>
+      <div><strong>Generated:</strong> ${esc(data.generated_at)}</div>
+    </div>
+    ${reportSection(visitMode ? 'Office Visit Summary' : 'Appointment Summary', 'Measure', totalRows, 'label', 'count')}
+    ${reportSection('Students by Institute', 'Institute', data.students_by_institute || [], 'institute', 'count')}
+    ${reportStudentAppointments(data.student_appointments || [], visitMode)}
+  </article>`;
+}
+
+function renderStudentAppointmentReport(data, period) {
+  if (studentAppointmentReportMode === 'visits') {
+    data = { ...data };
+    data.student_appointments = data.student_appointments
+      .map(student => ({
+        ...student,
+        appointments: student.appointments.filter(appointment => appointment.visited),
+      }))
+      .filter(student => student.appointments.length);
+    data.students_who_visited = data.student_appointments.length;
+    data.recorded_visits = data.student_appointments.reduce((total, student) =>
+      total + student.appointments.length, 0);
+    const visitCounts = new Map((data.students_by_institute || []).map(row => [row.institute, 0]));
+    data.student_appointments.forEach(student => {
+      if (student.institute !== '—') visitCounts.set(student.institute, (visitCounts.get(student.institute) || 0) + 1);
+    });
+    data.students_by_institute = Array.from(visitCounts, ([institute, count]) => ({ institute, count }));
+  }
+  currentStudentAppointmentReport = {
+    ...data,
+    period: { ...data.period, label: period.label },
+    generated_at: new Date().toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' }),
+  };
+  document.getElementById('student-appointment-results').innerHTML =
+    studentVisitReport(currentStudentAppointmentReport, studentAppointmentReportMode === 'visits');
+  document.getElementById('download-student-visits-docx').disabled = false;
+  document.getElementById('print-student-visits').disabled = false;
+}
+
+async function generateStudentAppointmentReport() {
+  const button = document.getElementById('generate-student-appointment-report');
+  const error = document.getElementById('student-appointment-error');
+  error.classList.add('hidden');
+  button.disabled = true;
+  button.textContent = 'Generating...';
+  try {
+    const period = getReportPeriod('student-');
+    const query = new URLSearchParams({
+      action: 'student_appointments_report',
+      start_date: period.startDate,
+      end_date: period.endDate,
+    });
+    const report = await api('/api/dashboard.php?' + query.toString());
+    renderStudentAppointmentReport(report, period);
+  } catch (err) {
+    error.textContent = err.message || `Could not generate the ${studentAppointmentReportMode === 'visits' ? 'Guidance Office Visit' : 'Appointment'} Report.`;
+    error.classList.remove('hidden');
+  } finally {
+    button.disabled = false;
+    button.textContent = studentAppointmentReportMode === 'visits'
+      ? 'Generate Guidance Office Visit Report' : 'Generate Appointment Report';
+  }
 }
 
 function renderReport(data) {
@@ -185,14 +323,19 @@ function renderReport(data) {
   `;
 }
 
+let printTriggerId = 'print-report';
+
 function closePrintPreview() {
   document.getElementById('print-preview-overlay').classList.add('hidden');
-  document.getElementById('print-report').focus();
+  document.body.classList.remove('printing-student-visits');
+  document.getElementById(printTriggerId).focus();
 }
 
-function openPrintPreview() {
-  const report = document.querySelector('.staff-report');
+function openPrintPreview(selector = '.staff-report:not(.staff-student-visit-report)', triggerId = 'print-report', isStudentVisits = false) {
+  const report = document.querySelector(selector);
   if (!report) return;
+  printTriggerId = triggerId;
+  document.body.classList.toggle('printing-student-visits', isStudentVisits);
   document.getElementById('print-preview-content').replaceChildren(report.cloneNode(true));
   document.getElementById('print-preview-overlay').classList.remove('hidden');
   document.getElementById('close-print-preview').focus();
@@ -394,6 +537,7 @@ function wordTableFromReport(table) {
     return new docx.TableRow({
       tableHeader: isHeader,
       children: Array.from(row.cells).map(cell => new docx.TableCell({
+        ...(cell.colSpan > 1 ? { columnSpan: cell.colSpan } : {}),
         children: [new docx.Paragraph({
           alignment: cell.cellIndex === 0 ? docx.AlignmentType.LEFT : docx.AlignmentType.CENTER,
           children: [new docx.TextRun({
@@ -427,16 +571,19 @@ function wordTableFromReport(table) {
   });
 }
 
-async function downloadReport() {
-  if (!currentReport) return;
-  const button = document.getElementById('download-docx');
+async function downloadReport(reportSelector = '#report-results .staff-report',
+  buttonId = 'download-docx', filePrefix = 'GOSS-Staff-Report', reportData = currentReport) {
+  if (!reportData) return;
+  const button = document.getElementById(buttonId);
+  const buttonLabel = button.textContent;
   const error = document.getElementById('report-error');
   button.disabled = true;
   button.textContent = 'Preparing Word document...';
   error.classList.add('hidden');
   try {
     if (!window.docx) throw new Error('Word export library did not load. Check your internet connection and try again.');
-    const report = document.querySelector('.staff-report');
+    const report = document.querySelector(reportSelector);
+    if (!report) throw new Error('Generate the report before downloading it.');
     const logoResponse = await fetch(report.querySelector('img').src);
     if (!logoResponse.ok) throw new Error('Could not load the college logo for the Word report.');
     const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
@@ -444,7 +591,12 @@ async function downloadReport() {
       new docx.Paragraph({
         children: [
           new docx.ImageRun({ data: logoBytes, transformation: { width: 58, height: 58 } }),
-          new docx.TextRun({ text: '  Guidance Office Report', bold: true, size: 30, color: '1E7A34' }),
+          new docx.TextRun({
+            text: `  ${report.querySelector('h1')?.innerText.trim() || 'Guidance Office Report'}`,
+            bold: true,
+            size: 30,
+            color: '1E7A34',
+          }),
         ],
         alignment: docx.AlignmentType.CENTER,
         spacing: { after: 100 },
@@ -491,7 +643,7 @@ async function downloadReport() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `GOSS-Staff-Report-${currentReport.period.start_date}-to-${currentReport.period.end_date}.docx`;
+    link.download = `${filePrefix}-${reportData.period.start_date}-to-${reportData.period.end_date}.docx`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (err) {
@@ -499,7 +651,7 @@ async function downloadReport() {
     error.classList.remove('hidden');
   } finally {
     button.disabled = false;
-    button.textContent = 'Download DOCX';
+    button.textContent = buttonLabel;
   }
 }
 
@@ -511,11 +663,18 @@ async function downloadReport() {
     return;
   }
   CURRENT_USER = user;
-  renderShell(user, 'reports', 'Reports & Analytics');
+  const reportView = new URLSearchParams(location.search).get('view');
+  const visitsOnly = reportView === 'guidance-visits';
+  const appointmentReportOnly = reportView === 'appointments';
+  const guidanceReportOnly = visitsOnly || appointmentReportOnly;
+  studentAppointmentReportMode = visitsOnly ? 'visits' : 'appointments';
+  renderShell(user, visitsOnly ? 'visit-report' : appointmentReportOnly ? 'appointment-report' : 'reports',
+    visitsOnly ? 'Guidance Office Visit Report'
+      : appointmentReportOnly ? 'Appointment Report' : 'Reports & Analytics');
   const todayValue = dateInputValue(new Date());
   const currentMonth = todayValue.slice(0, 7);
   document.getElementById('page-content').innerHTML = `
-    <div class="card staff-report-controls">
+    <div class="card staff-report-controls" id="general-report-controls">
       <div class="staff-period-controls">
         <div class="field">
           <label for="period-type">Report period</label>
@@ -556,6 +715,48 @@ async function downloadReport() {
       <button class="btn btn-outline" id="print-report" type="button" disabled>Print Report</button>
       </div>
     </div>
+    <div class="card staff-report-controls" id="student-appointment-controls">
+      <div class="section-title" id="student-appointment-title">Appointment Report</div>
+      <p class="list-item-sub" id="student-appointment-description">A separate report of all student appointments, including type, status, and assigned staff members.</p>
+      <div class="staff-period-controls">
+        <div class="field">
+          <label for="student-period-type">Report period</label>
+          <select id="student-period-type">
+            <option value="daily">Daily</option><option value="weekly">Weekly</option>
+            <option value="monthly" selected>Monthly</option>
+            <option value="semester-1">First Semester</option><option value="semester-2">Second Semester</option>
+            <option value="custom">Custom date range</option>
+          </select>
+        </div>
+        <div class="field hidden" id="student-period-date-field">
+          <label id="student-period-date-label" for="student-period-date">Report date</label>
+          <input type="date" id="student-period-date" value="${todayValue}">
+        </div>
+        <div class="field" id="student-period-month-field">
+          <label for="student-period-month">Report month</label>
+          <input type="month" id="student-period-month" value="${currentMonth}">
+        </div>
+        <div class="staff-period-range hidden" id="student-period-range-fields">
+          <div class="field">
+            <label id="student-period-range-title" for="student-start-date">Start date</label>
+            <input type="date" id="student-start-date">
+          </div>
+          <div class="field">
+            <label for="student-end-date">End date</label>
+            <input type="date" id="student-end-date">
+          </div>
+        </div>
+        <button class="btn" id="generate-student-appointment-report" type="button">Generate Appointment Report</button>
+      </div>
+      <p class="list-item-sub hidden" id="student-semester-help" style="margin:12px 0">
+        Enter the semester dates based on your school's academic calendar.
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-outline" id="download-student-visits-docx" type="button" disabled>Download Appointment Report DOCX</button>
+        <button class="btn btn-outline" id="print-student-visits" type="button" disabled>Print Appointment Report</button>
+      </div>
+      <div id="student-appointment-error" class="error-box hidden" style="margin-top:12px"></div>
+    </div>
     <div class="modal-overlay hidden print-preview-overlay" id="print-preview-overlay">
       <section class="modal print-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="print-preview-title">
         <header class="print-preview-header">
@@ -571,7 +772,7 @@ async function downloadReport() {
         <div class="print-preview-content" id="print-preview-content"></div>
       </section>
     </div>
-    <div class="card staff-conversation-export" style="margin-bottom:20px">
+    <div class="card staff-conversation-export" id="staff-conversation-export" style="margin-bottom:20px">
       <div class="section-title">Download a Student Conversation</div>
       <p class="list-item-sub">Choose a current or previous student conversation to download its case details, assigned-staff history, and complete chat transcript. Keep downloaded transcripts confidential.</p>
       <div class="staff-report-controls" style="margin:12px 0 0">
@@ -587,7 +788,19 @@ async function downloadReport() {
     </div>
     <div id="report-error" class="error-box hidden"></div>
     <div id="report-results"><div class="empty-state">Generate a report to view current staff reporting data.</div></div>
+    <div id="student-appointment-results"><div class="empty-state">Choose this report's date range, then select Generate Appointment Report.</div></div>
   `;
+  if (guidanceReportOnly) document.getElementById('page-content').classList.add('guidance-report-only');
+  if (visitsOnly) {
+    document.getElementById('student-appointment-title').textContent = 'Guidance Office Visit Report';
+    document.getElementById('student-appointment-description').textContent =
+      'Lists students with completed in-person visits to the Guidance Office and the staff member they met.';
+    document.getElementById('generate-student-appointment-report').textContent = 'Generate Guidance Office Visit Report';
+    document.getElementById('download-student-visits-docx').textContent = 'Download Visit Report DOCX';
+    document.getElementById('print-student-visits').textContent = 'Print Visit Report';
+    document.getElementById('student-appointment-results').innerHTML =
+      "<div class=\"empty-state\">Choose this report's date range, then generate the Guidance Office Visit Report.</div>";
+  }
   document.getElementById('generate-report').addEventListener('click', generateReport);
   document.getElementById('period-type').addEventListener('change', updatePeriodControls);
   document.getElementById('period-type').addEventListener('change', () => {
@@ -599,8 +812,17 @@ async function downloadReport() {
   document.getElementById('period-month').addEventListener('change', generateReport);
   document.getElementById('download-docx').addEventListener('click', downloadReport);
   document.getElementById('print-report').addEventListener('click', openPrintPreview);
+  document.getElementById('student-period-type').addEventListener('change', () => updatePeriodControls('student-'));
+  document.getElementById('generate-student-appointment-report').addEventListener('click', generateStudentAppointmentReport);
+  document.getElementById('download-student-visits-docx').addEventListener('click', () =>
+    downloadReport('#student-appointment-results .staff-student-visit-report', 'download-student-visits-docx',
+      studentAppointmentReportMode === 'visits' ? 'GOSS-Guidance-Office-Visit-Report' : 'GOSS-Appointment-Report',
+      currentStudentAppointmentReport));
+  document.getElementById('print-student-visits').addEventListener('click', () =>
+      openPrintPreview('#student-appointment-results .staff-student-visit-report', 'print-student-visits', true));
   document.getElementById('close-print-preview').addEventListener('click', closePrintPreview);
   document.getElementById('confirm-print-report').addEventListener('click', () => window.print());
+  window.addEventListener('afterprint', closePrintPreview);
   document.getElementById('print-preview-overlay').addEventListener('click', event => {
     if (event.target.id === 'print-preview-overlay') closePrintPreview();
   });
@@ -615,7 +837,12 @@ async function downloadReport() {
   });
   document.getElementById('download-conversation').addEventListener('click', downloadConversation);
   updatePeriodControls();
-  await Promise.all([generateReport(), loadConversationOptions()]);
+  updatePeriodControls('student-');
+  if (guidanceReportOnly) {
+    await generateStudentAppointmentReport();
+  } else {
+    await Promise.all([generateReport(), loadConversationOptions()]);
+  }
 })();
 </script>
 </body>

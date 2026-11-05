@@ -34,6 +34,143 @@ async function fetchAllRows(buildQuery, pageSize = 1000) {
   }
 }
 
+const INSTITUTE_COURSES = [
+  {
+    name: 'Institute of Teacher Education (ITE)',
+    courses: [
+      'Bachelor of Elementary Education (BEEd)', 'BEEd',
+      'Bachelor of Secondary Education (BSEd) English', 'Bachelor of Secondary Education English', 'BSEd English',
+      'Bachelor of Secondary Education (BSEd) Filipino', 'Bachelor of Secondary Education Filipino', 'BSEd Filipino',
+      'Bachelor of Secondary Education (BSEd) Mathematics', 'Bachelor of Secondary Education Mathematics', 'BSEd Mathematics',
+      'Bachelor of Secondary Education (BSEd) Social Studies', 'Bachelor of Secondary Education Social Studies', 'BSEd Social Studies',
+    ],
+  },
+  {
+    name: 'Institute of Computer Studies (ICS)',
+    courses: [
+      'Bachelor of Science in Information Technology (BSIT)', 'BSIT',
+      'BS Computer Science', 'Bachelor of Science in Computer Science',
+    ],
+  },
+  {
+    name: 'Institute of Business and Financial Services (IBFS)',
+    courses: [
+      'BS Business Administration Marketing Management', 'BSBA Marketing Management',
+      'Bachelor of Science in Business Administration Marketing Management',
+      'BS Business Administration Human Resource Management', 'BSBA Human Resource Management', 'BSBA HRM',
+      'Bachelor of Science in Business Administration Human Resource Management',
+      'Bachelor of Science in Office Administration (BSOA)', 'BSOA',
+    ],
+  },
+  {
+    name: 'Institute of Criminal Justice Education (ICJE)',
+    courses: [
+      'Bachelor of Science in Criminology (BSCrim)', 'BSCrim',
+      'Bachelor of Science in Industrial Security Management (BSISM)', 'BSISM',
+    ],
+  },
+  {
+    name: 'Institute of Arts and Sciences (IAS)',
+    courses: [
+      'Bachelor of Arts in English Language Studies (BAELS)', 'BAELS',
+      'Bachelor of Arts in Political Science', 'BA Political Science',
+    ],
+  },
+];
+
+function normalizeCourse(course) {
+  return String(course || '').toLowerCase()
+    .replace(/[–—-]/g, ' ')
+    .replace(/[()]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+const INSTITUTE_BY_COURSE = new Map(
+  INSTITUTE_COURSES.flatMap((institute) =>
+    institute.courses.map((course) => [normalizeCourse(course), institute.name]))
+);
+
+function instituteForCourse(course) {
+  return INSTITUTE_BY_COURSE.get(normalizeCourse(course)) || '';
+}
+
+function instituteForStudent(student) {
+  const savedInstitute = String(student.institute || '').trim();
+  if (savedInstitute && savedInstitute !== 'Unclassified / course not listed') return savedInstitute;
+  return instituteForCourse(student.course) || '—';
+}
+
+function studentsWithAppointments(appointments, usersMap) {
+  const studentsById = {};
+  appointments.forEach((appointment) => {
+    const student = usersMap[appointment.student_id] || {};
+    const studentId = appointment.student_id || `unknown-${appointment.id}`;
+    if (!studentsById[studentId]) {
+      studentsById[studentId] = {
+        student_name: student.full_name || 'Student',
+        student_no: student.user_id_no || '',
+        course: student.course || '',
+        institute: instituteForStudent(student),
+        appointments: [],
+      };
+    }
+    studentsById[studentId].appointments.push({
+      date: appointment.appt_date,
+      time: appointment.appt_time,
+      type: appointment.type,
+      status: appointment.status,
+      visited: appointment.status === 'Completed' && appointment.type === 'In-Person',
+      staff_name: usersMap[appointment.staff_id] ? usersMap[appointment.staff_id].full_name : '',
+    });
+  });
+
+  return Object.values(studentsById)
+    .map((student) => ({
+      ...student,
+      appointments: student.appointments.sort((a, b) =>
+        String(a.date).localeCompare(String(b.date)) || String(a.time).localeCompare(String(b.time))),
+    }))
+    .sort((a, b) => a.institute.localeCompare(b.institute) ||
+      a.course.localeCompare(b.course) || a.student_name.localeCompare(b.student_name));
+}
+
+function studentCountsByInstitute(students) {
+  const counts = new Map(INSTITUTE_COURSES.map((institute) => [institute.name, 0]));
+  students.forEach((student) => {
+    if (student.institute !== '—') {
+      counts.set(student.institute, (counts.get(student.institute) || 0) + 1);
+    }
+  });
+  return Array.from(counts, ([institute, count]) => ({ institute, count }));
+}
+
+async function fetchStudentAppointmentReport(startDate, endDate) {
+  const [appointments, users] = await Promise.all([
+    fetchAllRows(() => sb.from('appointments')
+      .select('id, student_id, staff_id, appt_date, appt_time, type, status')
+      .gte('appt_date', startDate)
+      .lte('appt_date', endDate)),
+    fetchAllRows(() => sb.from('users')
+      .select('id, full_name, user_id_no, course, institute, role')),
+  ]);
+  const usersMap = {};
+  users.forEach((user) => { usersMap[user.id] = user; });
+  const students = studentsWithAppointments(appointments, usersMap);
+  const visitedStudents = students.filter((student) =>
+    student.appointments.some((appointment) => appointment.visited));
+  return {
+    period: { start_date: startDate, end_date: endDate },
+    students_with_appointments: students.length,
+    students_who_visited: visitedStudents.length,
+    recorded_visits: appointments.filter((appointment) =>
+      appointment.status === 'Completed' && appointment.type === 'In-Person').length,
+    students_by_institute: studentCountsByInstitute(students),
+    student_appointments: students,
+  };
+}
+
 // ---- audit logging (best-effort; never blocks the calling action) ----
 async function auditLog(action, targetType, targetId, metadata) {
   try {
@@ -450,6 +587,31 @@ async function handleAppointments(action, params, body) {
     return { students };
   }
 
+  if (action === 'record_visit') {
+    if (user.role !== 'staff') throw new Error('Only staff can record a Guidance Office visit');
+    const student = usersMap[body.student_id];
+    if (!student || student.role !== 'student') throw new Error('Select a valid student');
+
+    const timestamp = nowStr();
+    const { data, error } = await sb.from('appointments').insert({
+      student_id: student.id,
+      staff_id: user.id,
+      appt_date: timestamp.slice(0, 10),
+      appt_time: timestamp.slice(11, 19),
+      type: 'In-Person',
+      notes: null,
+      location: 'Guidance Office',
+      status: 'Completed',
+      created_at: timestamp,
+    }).select('id').single();
+    if (error) throw new Error(error.message || 'Could not record the office visit');
+    await auditLog('guidance_office_visit_recorded', 'appointment', data.id, {
+      student_id: student.id,
+      visit_date: timestamp.slice(0, 10),
+    });
+    return { id: data.id };
+  }
+
   if (action === 'create') {
     const date = body.appt_date;
     const time = (body.appt_time || '').trim();
@@ -514,7 +676,9 @@ async function handleAppointments(action, params, body) {
     await sb.from('appointments').update({ status }).eq('id', id);
     await auditLog('appointment_status_changed', 'appointment', id, { status });
     const notifyUser = user.role === 'student' ? a.staff_id : a.student_id;
-    const verb = status === 'Scheduled' ? 'accepted and confirmed' : `now ${status}`;
+    const verb = status === 'Scheduled' ? 'accepted and confirmed'
+      : status === 'Completed' ? 'marked as visited'
+      : `now ${status}`;
     await sb.from('notifications').insert({
       user_id: notifyUser, title: 'Appointment Update',
       body: `Appointment on ${a.appt_date} at ${a.appt_time} is ${verb}.`,
@@ -564,6 +728,16 @@ async function handleAppointments(action, params, body) {
 async function handleAdmin(action, params, body) {
   const user = await requireLogin();
   if (user.role !== 'admin') throw new Error('Forbidden');
+
+  if (action === 'student_appointments_report') {
+    const startDate = params.get('start_date') || '';
+    const endDate = params.get('end_date') || '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) {
+      throw new Error('Choose a valid date range');
+    }
+    return fetchStudentAppointmentReport(startDate, endDate);
+  }
 
   if (action === 'overview') {
     const [users, concerns, appts, notifs] = await Promise.all([
@@ -695,9 +869,11 @@ async function handleAdmin(action, params, body) {
       fetchAllRows(dateFilteredQuery(
         'concerns', 'id, student_id, category, is_urgent, status, created_at', 'created_at', true)),
       fetchAllRows(dateFilteredQuery('messages', 'id, sender_id, sent_at', 'sent_at', true)),
-      fetchAllRows(dateFilteredQuery('appointments', 'id, status, appt_date, staff_id', 'appt_date')),
+      fetchAllRows(dateFilteredQuery(
+        'appointments', 'id, staff_id, status, appt_date, appt_time', 'appt_date')),
     ]);
-    const reportUsers = await fetchAllRows(() => sb.from('users').select('id, full_name, role'));
+    const reportUsers = await fetchAllRows(() =>
+      sb.from('users').select('id, full_name, role'));
     const usersMap = {};
     reportUsers.forEach((row) => { usersMap[row.id] = row; });
 
@@ -893,6 +1069,18 @@ async function handleFeedback(action, params, body) {
 // ---- dashboard.php ----
 async function handleDashboard(action, params = new URLSearchParams()) {
   const user = await requireLogin();
+
+  if (action === 'student_appointments_report') {
+    if (user.role !== 'staff') throw new Error('Forbidden');
+    const startDate = params.get('start_date') || '';
+    const endDate = params.get('end_date') || '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate) {
+      throw new Error('Choose a valid date range');
+    }
+    return fetchStudentAppointmentReport(startDate, endDate);
+  }
+
   const usersMap = await fetchAllUsersMap();
 
   if (action === 'stats') {
@@ -991,10 +1179,10 @@ async function handleDashboard(action, params = new URLSearchParams()) {
     const concerns = await fetchAllRows(() => sb.from('concerns').select('*')
       .gte('created_at', `${startDate} 00:00:00`)
       .lte('created_at', `${endDate} 23:59:59`));
-    const appts = await fetchAllRows(() => sb.from('appointments').select('id, appt_date')
+    const appts = await fetchAllRows(() => sb.from('appointments')
+      .select('id, appt_date')
       .gte('appt_date', startDate)
       .lte('appt_date', endDate));
-    const students = await fetchAllRows(() => sb.from('users').select('id').eq('role', 'student'));
 
     const byCategoryMap = {};
     concerns.forEach((c) => { byCategoryMap[c.category] = (byCategoryMap[c.category] || 0) + 1; });
@@ -1020,7 +1208,7 @@ async function handleDashboard(action, params = new URLSearchParams()) {
       total_concerns: concerns.length,
       resolved: concerns.filter((c) => c.status === 'Resolved').length,
       total_appointments: appts.length,
-      total_students: students.length,
+      total_students: Object.values(usersMap).filter((student) => student.role === 'student').length,
     };
 
     return {
