@@ -1,4 +1,4 @@
-// Shared by login/student.html, login/staff.html and admindashboard/index.html.
+// Shared by login/student.html, login/staff.html and login/admin.html.
 // The role comes from <body data-role="...">, so each page only allows its own role.
 (function () {
   const role = document.body.dataset.role;
