@@ -98,14 +98,20 @@ function reportRows(title, rows, labelKey, countKey) {
   </section>`;
 }
 
-function reportGroupCounts(students, groupKey, activityLabel) {
+function reportGroupCounts(students, groupKey, activityLabel, includeLabels = []) {
   const groups = new Map();
+  const groupKeyFor = label => groupKey === 'course' ? reportCourseKey(label) : label;
+  includeLabels.forEach(label => {
+    const key = groupKeyFor(label);
+    if (!groups.has(key)) groups.set(key, { label, students: 0, activity: 0 });
+  });
   students.forEach(student => {
     const label = student[groupKey] || '—';
-    const group = groups.get(label) || { label, students: 0, activity: 0 };
+    const key = groupKeyFor(label);
+    const group = groups.get(key) || { label, students: 0, activity: 0 };
     group.students += 1;
     group.activity += student.appointments.length;
-    groups.set(label, group);
+    groups.set(key, group);
   });
   const rows = [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
   const body = rows.length ? rows.map(row => `
@@ -140,6 +146,7 @@ function populateStudentAppointmentFilters(data) {
     courseSelect.value = previousCourse;
   }
   instituteSelect.onchange = () => {
+    courseSelect.value = '';
     populateStudentAppointmentFilters(data);
     if (currentStudentAppointmentReport) generateStudentAppointmentReport();
   };
@@ -177,8 +184,36 @@ function filterStudentAppointmentReport(data, visitMode) {
     },
   };
   const activityLabel = visitMode ? 'Recorded visits' : 'Appointments';
-  filtered.institute_groups = reportGroupCounts(students, 'institute', activityLabel);
-  filtered.course_groups = reportGroupCounts(students, 'course', activityLabel);
+  const instituteOptions = [...new Set([
+    ...INSTITUTE_COURSES.map(item => item.name),
+    ...(data.institute_options || []),
+  ])];
+  const selectedCourseOption = course && (data.course_options || []).find(option =>
+    reportCourseKey(option.course) === reportCourseKey(course));
+  const courseInstitutes = selectedCourseOption
+    ? selectedCourseOption.institutes
+    : [instituteForCourse(course)].filter(Boolean);
+  const instituteGroupLabels = institute
+    ? [institute]
+    : course
+      ? courseInstitutes
+      : instituteOptions;
+  filtered.institute_groups = reportGroupCounts(
+    students, 'institute', activityLabel, instituteGroupLabels);
+  const courseGroupStudents = course
+    ? students.map(student => ({ ...student, course }))
+    : students;
+  const selectedInstitute = INSTITUTE_COURSES.find(item => item.name === institute);
+  const instituteCourses = institute
+    ? [
+      ...(selectedInstitute ? selectedInstitute.reportCourses : []),
+      ...(data.course_options || [])
+        .filter(option => option.institutes.includes(institute))
+        .map(option => option.course),
+    ]
+    : [];
+  filtered.course_groups = reportGroupCounts(
+    courseGroupStudents, 'course', activityLabel, course ? [course] : instituteCourses);
   return filtered;
 }
 
