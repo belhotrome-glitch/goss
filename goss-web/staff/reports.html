@@ -930,8 +930,8 @@ async function downloadReport(reportSelector = '#report-results .staff-report',
   });
   document.getElementById('period-date').addEventListener('change', generateReport);
   document.getElementById('period-month').addEventListener('change', generateReport);
-  document.getElementById('download-docx').addEventListener('click', downloadReport);
-  document.getElementById('print-report').addEventListener('click', openPrintPreview);
+  document.getElementById('download-docx').addEventListener('click', () => downloadReport());
+  document.getElementById('print-report').addEventListener('click', () => openPrintPreview());
   document.getElementById('student-period-type').addEventListener('change', () => updatePeriodControls('student-'));
   document.getElementById('generate-student-appointment-report').addEventListener('click', generateStudentAppointmentReport);
   if ('BroadcastChannel' in window) {
