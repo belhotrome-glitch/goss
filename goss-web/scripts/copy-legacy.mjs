@@ -1,4 +1,4 @@
-import { cp, mkdir } from 'node:fs/promises';
+import { cp, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,3 +22,10 @@ for (const path of legacyPaths) {
     force: true,
   });
 }
+
+const compatibilityDirectory = resolve(outputRoot, 'goss-web');
+await mkdir(compatibilityDirectory, { recursive: true });
+await writeFile(
+  resolve(compatibilityDirectory, 'index.html'),
+  '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta http-equiv="refresh" content="0;url=../"><title>GOSS Guidance Office</title></head><body><p>Opening the <a href="../">GOSS Guidance Office website</a>...</p></body></html>\n',
+);

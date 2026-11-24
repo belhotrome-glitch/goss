@@ -23,6 +23,8 @@ changed" below for the full list.
   shared `api()` helper in `assets/js/app.js`, which mimics the original PHP
   endpoint shapes. The Vite build copies those pages and their assets to
   `dist/` so all portal workflows remain available after deployment.
+  The import map also lets GitHub Pages run the source modules directly when
+  the repository is served from a branch.
 - Access control is enforced by Postgres **Row Level Security**, not
   server-side checks — this is the actual security boundary.
 
@@ -289,7 +291,7 @@ staff accounts.
 The public landing page is built from reusable React components; the
 authenticated portals remain organized into per-role folders:
 ```
-/src/pages/LandingPage.jsx     Public Guidance Office landing page
+/src/pages/LandingPage.js      Public Guidance Office landing page
 /src/components/               Reusable landing-page components
 /src/styles/landing.css        Landing page styling
 /index.html                    Vite entry point
