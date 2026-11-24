@@ -1,12 +1,14 @@
 # GOSS — Guidance Office Support System (v2)
 
 Client-side web app on **Supabase (Auth + Postgres)** — no backend server, the
-browser talks directly to Supabase. This v2 upgrade preserves the original
-UI/UX and page structure and adds an Admin Dashboard, secure real-time chat,
-audit logging, and hardened Row Level Security. See "What changed" below for
-the full list.
+browser talks directly to Supabase. The public Guidance Office landing page
+is a React application built with Vite. Existing student, staff, and admin
+portals remain available at their current routes and continue to use the
+shared Supabase-backed scripts. The app adds an Admin Dashboard, secure
+real-time chat, audit logging, and hardened Row Level Security. See "What
+changed" below for the full list.
 
-## Architecture (unchanged)
+## Architecture
 - **Auth**: Supabase Auth (email/password under the hood). No self-service
   sign-up, and **no example accounts or passwords are shipped in this
   codebase** — every account, including the first admin, is created directly
@@ -16,8 +18,11 @@ the full list.
 - **Database**: Postgres tables `users`, `concerns`, `messages`,
   `appointments`, `notifications`, plus new `audit_logs`, `announcements`,
   `feedback` tables. See `supabase/schema.sql`.
-- **Frontend**: same static HTML pages, same shared `api()` helper in
-  `assets/js/app.js` that mimics the original PHP endpoint shapes.
+- **Frontend**: React components in `src/` render the responsive public
+  landing page. Existing portal pages retain their current URLs and use the
+  shared `api()` helper in `assets/js/app.js`, which mimics the original PHP
+  endpoint shapes. The Vite build copies those pages and their assets to
+  `dist/` so all portal workflows remain available after deployment.
 - Access control is enforced by Postgres **Row Level Security**, not
   server-side checks — this is the actual security boundary.
 
@@ -189,8 +194,9 @@ accounts should go through your school's real enrollment process afterward,
 with role/activation changes handled from the Admin → Users page in the app.
 
 ## Environment variables
-This is a build-less static site (no bundler), so **the browser cannot read
-a `.env` file** — that only works for tooling that runs in Node.
+The frontend is built with Vite, but **the browser cannot read a `.env` file**
+— that only works for tooling that runs in Node. Supabase frontend settings
+remain in `assets/js/supabase-config.js`.
 
 | File | Purpose |
 |---|---|
@@ -200,21 +206,26 @@ a `.env` file** — that only works for tooling that runs in Node.
 
 **`SUPABASE_SERVICE_ROLE_KEY` must never appear in `supabase-config.js` or
 any other file the browser loads** — it bypasses RLS entirely. `.gitignore`
-already excludes `.env` from version control; double-check your deployment
-host's publish directory is `goss-web/` (not the repo root) so `.env` is
-never accidentally served as a static asset.
+already excludes `.env` from version control. The build only publishes the
+generated `dist/` directory and explicitly copies the app pages and assets;
+it does not copy `.env` files.
 
 ### 5. Run locally
-Static site — any static file server works:
+Install the frontend dependencies and start the Vite development server:
 ```bash
-python3 -m http.server 8000
-# or
-npx serve .
+npm ci
+npm run dev
 ```
+Use `npm run build` to generate a static deployment in `dist/`. The build
+includes the existing portal pages and assets alongside the React landing
+page.
 
 ### 6. Deploy online
-Any static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3+CDN)
-works since there's no server component. Requirements:
+The GitHub Actions workflow at `.github/workflows/deploy-pages.yml` builds
+and deploys `goss-web/dist` to GitHub Pages when changes are pushed to `main`
+or when manually triggered. Configure the repository's Pages source as
+**GitHub Actions**. Other static hosts can publish the `goss-web/dist`
+directory. Requirements:
 - Serve over **HTTPS** (all listed hosts do this by default).
 - Add security headers where the host supports them (`Content-Security-Policy`,
   `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
@@ -275,10 +286,19 @@ staff accounts.
   a live database to test against.
 
 ## Folder structure
-Pages are now organized into per-role folders rather than flat
-`role-page.html` filenames:
+The public landing page is built from reusable React components; the
+authenticated portals remain organized into per-role folders:
 ```
-/index.html                    Sign-in (Student / Staff / Admin tabs)
+/src/pages/LandingPage.jsx     Public Guidance Office landing page
+/src/components/               Reusable landing-page components
+/src/styles/landing.css        Landing page styling
+/index.html                    Vite entry point
+/vite.config.js                Relative asset paths for GitHub Pages
+/scripts/copy-legacy.mjs       Preserve portal routes in the static build
+/dist/                         Generated deployment output (not committed)
+/login/                        Student and staff sign-in pages
+  student.html, staff.html
+/admindashboard/index.html     Admin sign-in page
 /student/                      Student portal
   dashboard.html, concerns.html, concern-detail.html,
   submit.html, appointments.html
